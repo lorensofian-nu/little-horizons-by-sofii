@@ -11,8 +11,9 @@ import java.util.Properties;
  * Singleton in charge of creating JDBC connections to the MySQL database.
  *
  * <p>Connection settings are read once from the {@code db.properties} file located
- * at the project root. Callers obtain a fresh {@link Connection} on each request and
- * are expected to close it using try-with-resources.</p>
+ * at the project root. Missing required settings fail fast with a clear error;
+ * no default credentials are ever assumed. Callers obtain a fresh {@link Connection}
+ * on each request and are expected to close it using try-with-resources.</p>
  */
 public final class DatabaseConnection {
 
@@ -29,12 +30,28 @@ public final class DatabaseConnection {
 
     private DatabaseConnection() {
         Properties properties = loadProperties();
-        String host = properties.getProperty("db.host", "localhost");
-        String port = properties.getProperty("db.port", "3306");
-        String database = properties.getProperty("db.name", "erp_little_horizons");
-        this.user = properties.getProperty("db.user", "root");
+        String host = requireProperty(properties, "db.host");
+        String port = requireProperty(properties, "db.port");
+        String database = requireProperty(properties, "db.name");
+        this.user = requireProperty(properties, "db.user");
+        // The password may legitimately be empty for a local development MySQL user.
         this.password = properties.getProperty("db.password", "");
         this.jdbcUrl = String.format(JDBC_URL_TEMPLATE, host, port, database);
+    }
+
+    /**
+     * Reads a required configuration key; fails fast with a clear message
+     * instead of silently falling back to insecure default credentials.
+     */
+    private String requireProperty(Properties properties, String key) {
+        String value = properties.getProperty(key);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException(
+                    "The '" + key + "' setting is missing or empty in db.properties. "
+                    + "Check the db.properties file at the project root and set "
+                    + "db.host, db.port, db.name and db.user.");
+        }
+        return value;
     }
 
     /** Returns the singleton instance using double-checked locking. */
@@ -76,7 +93,7 @@ public final class DatabaseConnection {
                     properties.load(fileInput);
                 } catch (IOException fileException) {
                     LoggerUtil.logError("Could not read " + CONFIG_FILE
-                            + "; using default connection settings", fileException);
+                            + " from the working directory", fileException);
                 }
             }
         } catch (IOException exception) {

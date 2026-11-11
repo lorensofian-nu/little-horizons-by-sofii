@@ -28,7 +28,17 @@ public final class Main {
     public static void main(String[] args) {
         printBanner();
 
-        if (!DatabaseConnection.getInstance().testConnection()) {
+        DatabaseConnection database;
+        try {
+            database = DatabaseConnection.getInstance();
+        } catch (IllegalStateException exception) {
+            ConsoleUtils.printError("Configuration error: " + exception.getMessage());
+            LoggerUtil.logError("Application started with invalid database configuration",
+                    exception);
+            return;
+        }
+
+        if (!database.testConnection()) {
             ConsoleUtils.printError("Could not connect to the database 'erp_little_horizons'.");
             System.out.println("  1. Verify that MySQL 8.0+ is running.");
             System.out.println("  2. Check the credentials in the 'db.properties' file.");
