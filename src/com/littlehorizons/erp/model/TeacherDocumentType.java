@@ -6,10 +6,10 @@ package com.littlehorizons.erp.model;
  */
 public enum TeacherDocumentType {
 
-    /** Cédula de ciudadanía. */
+    /** Colombian citizenship card (Cédula de Ciudadanía). */
     CC("CC"),
 
-    /** Cédula de extranjería. */
+    /** Foreigner identification card (Cédula de Extranjería). */
     CE("CE"),
 
     /** Passport. */

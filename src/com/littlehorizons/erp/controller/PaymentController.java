@@ -187,7 +187,7 @@ public class PaymentController {
     }
 
     // ------------------------------------------------------------------
-    // 3. Delinquency report ("morosos").
+    // 3. Delinquency report (students with overdue payments).
     // ------------------------------------------------------------------
 
     /**
