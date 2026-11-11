@@ -1,0 +1,13 @@
+# Compiled classes
+out/
+*.class
+
+# Generated files
+error_log.txt
+invoices/
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+nbproject/private/
