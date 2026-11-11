@@ -45,7 +45,7 @@ Little Horizons ERP centraliza y automatiza los procesos académicos, administra
 | Campo | Información |
 |---|---|
 | **Nombre completo** | Sofía — Little Horizons By Sofii |
-| **Correo electrónico** | _(completar con tu correo institucional)_ |
+| **Correo electrónico** | lorensofian23@gmail.com |
 | **Información de contacto** | GitHub: [lorensofian-nu](https://github.com/lorensofian-nu) |
 
 ---
@@ -286,4 +286,5 @@ Este proyecto se desarrolla con fines académicos. Todos los derechos reservados
 ## 16. Contacto
 
 - **Repositorio**: https://github.com/lorensofian-nu/little-horizons-by-sofii
+- **Correo**: lorensofian23@gmail.com
 - **Contacto**: ver sección [Autores](#3-autores).
