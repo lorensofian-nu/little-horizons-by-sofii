@@ -3,14 +3,15 @@
 -- FILE:           docs/database.sql
 -- PURPOSE:        Complete database definition for the Little Horizons school
 --                 management system. It contains the full schema (DDL) plus a
---                 coherent set of realistic Colombian test data (DML) for
+--                 coherent set of synthetic test data (DML) for
 --                 development and testing environments.
 -- ENGINE:         MySQL 8.0+ (relies on CHECK constraints, ENUM and utf8mb4)
 -- CHARACTER SET:  utf8mb4 / utf8mb4_unicode_ci (full Spanish accent support)
 -- HOW TO RUN:     mysql -u root -p < docs/database.sql
 --                 (or, inside a MySQL session:  SOURCE docs/database.sql;)
--- WARNING:        The script drops and recreates the erp_little_horizons
---                 database. Do NOT run it against a production instance.
+--                 This script is non-destructive at database level. It is
+--                 intended for a new/empty academic database. Use
+--                 docs/database-reset.sql only when a full reset is intended.
 -- ============================================================================
 
 
@@ -18,9 +19,22 @@
 -- SECTION 1: DDL — Official corrected schema (reproduced verbatim, do not alter)
 -- ============================================================================
 
-DROP DATABASE IF EXISTS erp_little_horizons;
-CREATE DATABASE erp_little_horizons CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS erp_little_horizons CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE erp_little_horizons;
+
+CREATE TABLE schema_migrations (
+    version VARCHAR(32) PRIMARY KEY,
+    description VARCHAR(255) NOT NULL,
+    applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB COMMENT='Applied database migration versions';
+INSERT INTO schema_migrations (version, description)
+VALUES ('V001', 'Baseline Little Horizons schema');
+
+CREATE TABLE secuencias_documento (
+    nombre_secuencia VARCHAR(80) PRIMARY KEY,
+    siguiente_valor INT NOT NULL,
+    CHECK (siguiente_valor > 0)
+) ENGINE=InnoDB COMMENT='Secuencias transaccionales para recibos y facturas';
 
 CREATE TABLE grados (
     id_grado INT AUTO_INCREMENT PRIMARY KEY,
@@ -82,8 +96,8 @@ CREATE TABLE estudiante_acudiente (
     es_contacto_emergencia BOOLEAN DEFAULT TRUE COMMENT 'Disponible para emergencias',
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id_estudiante, id_acudiente),
-    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE CASCADE,
-    FOREIGN KEY (id_acudiente) REFERENCES acudientes(id_acudiente) ON DELETE CASCADE,
+    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
+    FOREIGN KEY (id_acudiente) REFERENCES acudientes(id_acudiente) ON DELETE RESTRICT,
     INDEX idx_estudiante (id_estudiante),
     INDEX idx_acudiente (id_acudiente)
 ) ENGINE=InnoDB COMMENT='Relación entre estudiantes y sus acudientes';
@@ -98,7 +112,7 @@ CREATE TABLE matriculas (
     fecha_retiro DATE,
     observaciones TEXT,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE CASCADE,
+    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
     FOREIGN KEY (id_grado) REFERENCES grados(id_grado),
     UNIQUE KEY matricula_unica (id_estudiante, año_academico),
     INDEX idx_año_grado (año_academico, id_grado),
@@ -140,16 +154,32 @@ CREATE TABLE profesores (
     INDEX idx_nombre (primer_apellido, segundo_apellido)
 ) ENGINE=InnoDB COMMENT='Información de profesores';
 
+CREATE TABLE usuarios (
+    id_usuario INT AUTO_INCREMENT PRIMARY KEY,
+    nombre_usuario VARCHAR(80) NOT NULL UNIQUE,
+    hash_password VARCHAR(255) NOT NULL,
+    rol ENUM('Administrador', 'Profesor', 'Secretaria') NOT NULL,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    debe_cambiar_password BOOLEAN NOT NULL DEFAULT TRUE,
+    ultimo_acceso TIMESTAMP NULL,
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_usuario_activo (nombre_usuario, activo)
+) ENGINE=InnoDB COMMENT='Usuarios autenticados y roles del sistema';
+
 CREATE TABLE asignaciones_profesor (
     id_asignacion INT AUTO_INCREMENT PRIMARY KEY,
     id_profesor INT NOT NULL,
     id_materia INT NOT NULL,
     año_academico INT NOT NULL,
     seccion VARCHAR(10) COMMENT 'Sección o grupo (A, B, C)',
+    dia_semana ENUM('Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'),
+    hora_inicio TIME,
+    hora_fin TIME,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_profesor) REFERENCES profesores(id_profesor) ON DELETE CASCADE,
-    FOREIGN KEY (id_materia) REFERENCES materias(id_materia) ON DELETE CASCADE,
+    FOREIGN KEY (id_profesor) REFERENCES profesores(id_profesor) ON DELETE RESTRICT,
+    FOREIGN KEY (id_materia) REFERENCES materias(id_materia) ON DELETE RESTRICT,
     UNIQUE KEY asignacion_unica (id_profesor, id_materia, año_academico, seccion),
+    CHECK (hora_inicio IS NULL OR hora_fin IS NULL OR hora_inicio < hora_fin),
     INDEX idx_profesor_año (id_profesor, año_academico),
     INDEX idx_materia_año (id_materia, año_academico)
 ) ENGINE=InnoDB COMMENT='Asignación de profesores a materias por año académico';
@@ -164,8 +194,8 @@ CREATE TABLE inscripciones_materia (
     fecha_inscripcion DATE NOT NULL,
     estado ENUM('Activa', 'Retirada', 'Completada') DEFAULT 'Activa',
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE CASCADE,
-    FOREIGN KEY (id_materia) REFERENCES materias(id_materia) ON DELETE CASCADE,
+    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
+    FOREIGN KEY (id_materia) REFERENCES materias(id_materia) ON DELETE RESTRICT,
     UNIQUE KEY inscripcion_unica (id_estudiante, id_materia, año_academico, periodo_academico),
     INDEX idx_estudiante_año (id_estudiante, año_academico),
     INDEX idx_materia_periodo (id_materia, periodo_academico)
@@ -183,8 +213,8 @@ CREATE TABLE registros_academicos (
     fecha_registro DATE NOT NULL,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE CASCADE,
-    FOREIGN KEY (id_materia) REFERENCES materias(id_materia) ON DELETE CASCADE,
+    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
+    FOREIGN KEY (id_materia) REFERENCES materias(id_materia) ON DELETE RESTRICT,
     FOREIGN KEY (id_profesor) REFERENCES profesores(id_profesor),
     CHECK (valor_nota >= 0.0 AND valor_nota <= 5.0),
     UNIQUE KEY registro_unico (id_estudiante, id_materia, año_academico, periodo_academico),
@@ -202,8 +232,8 @@ CREATE TABLE asistencias (
     observaciones TEXT,
     registrado_por INT COMMENT 'ID del profesor que registró la asistencia',
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE CASCADE,
-    FOREIGN KEY (id_materia) REFERENCES materias(id_materia) ON DELETE CASCADE,
+    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
+    FOREIGN KEY (id_materia) REFERENCES materias(id_materia) ON DELETE RESTRICT,
     FOREIGN KEY (registrado_por) REFERENCES profesores(id_profesor),
     UNIQUE KEY asistencia_unica (id_estudiante, id_materia, fecha_asistencia),
     INDEX idx_estudiante_fecha (id_estudiante, fecha_asistencia),
@@ -222,6 +252,7 @@ CREATE TABLE clubes (
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (id_profesor_supervisor) REFERENCES profesores(id_profesor),
+    CHECK (capacidad_maxima > 0),
     INDEX idx_activo (esta_activo),
     INDEX idx_nombre (nombre_club)
 ) ENGINE=InnoDB COMMENT='Catálogo de clubes extracurriculares';
@@ -235,8 +266,8 @@ CREATE TABLE membresias_club (
     fecha_retiro DATE,
     motivo_retiro TEXT,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE CASCADE,
-    FOREIGN KEY (id_club) REFERENCES clubes(id_club) ON DELETE CASCADE,
+    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
+    FOREIGN KEY (id_club) REFERENCES clubes(id_club) ON DELETE RESTRICT,
     INDEX idx_estudiante (id_estudiante),
     INDEX idx_club_estado (id_club, estado_membresia)
 ) ENGINE=InnoDB COMMENT='Membresías de estudiantes en clubes';
@@ -266,8 +297,8 @@ CREATE TABLE participantes_evento (
     posicion_obtenida VARCHAR(20) COMMENT 'Posición obtenida si hay competencia (1er Lugar, 2do Lugar, 3er Lugar, Participante)',
     observaciones TEXT,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_evento) REFERENCES eventos(id_evento) ON DELETE CASCADE,
-    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE CASCADE,
+    FOREIGN KEY (id_evento) REFERENCES eventos(id_evento) ON DELETE RESTRICT,
+    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
     UNIQUE KEY participacion_unica (id_evento, id_estudiante),
     INDEX idx_evento (id_evento),
     INDEX idx_estudiante (id_estudiante)
@@ -281,6 +312,7 @@ CREATE TABLE conceptos_pago (
     monto_base DECIMAL(10,2) NOT NULL COMMENT 'Valor base del concepto en pesos colombianos',
     es_recurrente BOOLEAN DEFAULT FALSE COMMENT 'Indica si es un pago recurrente (ej: pensión mensual)',
     esta_activo BOOLEAN DEFAULT TRUE,
+    CHECK (monto_base >= 0),
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_activo (esta_activo),
@@ -300,9 +332,10 @@ CREATE TABLE pagos (
     periodo_academico ENUM('I', 'II', 'III', 'IV', 'Anual') COMMENT 'Período al que aplica el pago',
     notas TEXT,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE CASCADE,
+    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
     FOREIGN KEY (id_acudiente) REFERENCES acudientes(id_acudiente),
     FOREIGN KEY (id_concepto) REFERENCES conceptos_pago(id_concepto),
+    CHECK (monto_pagado >= 0),
     INDEX idx_estudiante_fecha (id_estudiante, fecha_pago),
     INDEX idx_concepto (id_concepto),
     INDEX idx_fecha (fecha_pago),
@@ -315,10 +348,11 @@ CREATE TABLE facturas (
     id_pago INT NOT NULL COMMENT 'Pago asociado a esta factura',
     fecha_emision DATE NOT NULL,
     cufe VARCHAR(100) COMMENT 'Código Único de Factura Electrónica (simulado)',
-    nombre_archivo_pdf VARCHAR(255) COMMENT 'Nombre del archivo de factura generado (formato .txt)',
+    nombre_archivo_txt VARCHAR(255) COMMENT 'Nombre del archivo de factura generado (formato .txt)',
     ruta_archivo VARCHAR(500) COMMENT 'Ruta completa donde se guardó el archivo',
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_pago) REFERENCES pagos(id_pago) ON DELETE CASCADE,
+    FOREIGN KEY (id_pago) REFERENCES pagos(id_pago) ON DELETE RESTRICT,
+    UNIQUE KEY factura_por_pago (id_pago),
     INDEX idx_numero_factura (numero_factura),
     INDEX idx_fecha_emision (fecha_emision),
     INDEX idx_pago (id_pago)
@@ -360,8 +394,10 @@ CREATE TABLE prestamos_estudiante (
     observaciones TEXT,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_recurso) REFERENCES recursos(id_recurso) ON DELETE CASCADE,
-    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE CASCADE,
+    FOREIGN KEY (id_recurso) REFERENCES recursos(id_recurso) ON DELETE RESTRICT,
+    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
+    CHECK (fecha_devolucion_esperada >= fecha_prestamo),
+    CHECK (fecha_devolucion_real IS NULL OR fecha_devolucion_real >= fecha_prestamo),
     INDEX idx_recurso_estado (id_recurso, estado_prestamo),
     INDEX idx_estudiante (id_estudiante),
     INDEX idx_estado (estado_prestamo),
@@ -379,8 +415,10 @@ CREATE TABLE prestamos_profesor (
     observaciones TEXT,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_recurso) REFERENCES recursos(id_recurso) ON DELETE CASCADE,
-    FOREIGN KEY (id_profesor) REFERENCES profesores(id_profesor) ON DELETE CASCADE,
+    FOREIGN KEY (id_recurso) REFERENCES recursos(id_recurso) ON DELETE RESTRICT,
+    FOREIGN KEY (id_profesor) REFERENCES profesores(id_profesor) ON DELETE RESTRICT,
+    CHECK (fecha_devolucion_esperada >= fecha_prestamo),
+    CHECK (fecha_devolucion_real IS NULL OR fecha_devolucion_real >= fecha_prestamo),
     INDEX idx_recurso_estado (id_recurso, estado_prestamo),
     INDEX idx_profesor (id_profesor),
     INDEX idx_estado (estado_prestamo),
@@ -437,77 +475,73 @@ INSERT INTO conceptos_pago (id_concepto, codigo_concepto, nombre_concepto, descr
 -- assignments below reference these ids.
 -- ----------------------------------------------------------------------------
 INSERT INTO profesores (id_profesor, tipo_documento, numero_documento, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, correo_electronico, telefono, especializacion, fecha_contratacion, estado) VALUES
-(1,  'CC', '1015234567', 'Ana Lucía',        'María',      'Peña',        'Salazar',   'ana.pena@littlehorizons.edu.co',       '+57 301 245 7896', 'Matemáticas',           '2012-01-16', 'Activo'),
-(2,  'CC', '1025345678', 'Ricardo',          'Enrique',    'Bermúdez',    'Ortiz',     'ricardo.bermudez@littlehorizons.edu.co','+57 302 356 7891', 'Matemáticas',           '2015-02-02', 'Activo'),
-(3,  'CC', '1035456789', 'Paula',            'Andrea',     'Salgar',      'Vargas',    'paula.salgar@littlehorizons.edu.co',   '+57 313 467 8902', 'Matemáticas',           '2018-01-22', 'Activo'),
-(4,  'CC', '1040567890', 'Óscar',            'Iván',       'Mesa',        'Duarte',    'oscar.mesa@littlehorizons.edu.co',     '+57 320 578 9013', 'Matemáticas',           '2010-01-18', 'Activo'),
-(5,  'CC', '1050678901', 'Carlos',           'Arturo',     'Sabogal',     'Vargas',    'carlos.sabogal@littlehorizons.edu.co', '+57 315 689 0124', 'Matemáticas',           '2011-01-24', 'Activo'),
-(6,  'CC', '1060789012', 'Julián',           'Esteban',    'Rivera',      'Álvarez',   'julian.rivera@littlehorizons.edu.co',  '+57 316 790 1235', 'Español y Literatura',  '2013-01-21', 'Activo'),
-(7,  'CC', '1070890123', 'Diana',            'Carolina',   'Ayala',       'Pinto',     'diana.ayala@littlehorizons.edu.co',    '+57 317 801 2346', 'Español y Literatura',  '2016-01-25', 'Activo'),
-(8,  'CC', '1080901234', 'Sergio',           'Andrés',     'Gutiérrez',   'Rojas',     'sergio.gutierrez@littlehorizons.edu.co','+57 318 912 3457', 'Español y Literatura',  '2014-01-20', 'Activo'),
-(9,  'CC', '1090012345', 'Luz',              'Adriana',    'Carrillo',    'Nieto',     'luz.carrillo@littlehorizons.edu.co',   '+57 319 023 4568', 'Inglés',                '2017-01-23', 'Activo'),
-(10, 'CC', '1101123456', 'John',             'Freddy',     'Vélez',       'Ramírez',   'john.velez@littlehorizons.edu.co',     '+57 310 134 5679', 'Inglés',                '2019-01-21', 'Activo'),
-(11, 'CC', '1112234567', 'Margarita',        'Rosa',       'Cabanzo',     'Herrera',   'margarita.cabanzo@littlehorizons.edu.co','+57 311 245 6780', 'Educación Física',      '2012-02-06', 'Activo'),
-(12, 'CC', '1123345678', 'Iván',             'Darío',      'Lozano',      'Prada',     'ivan.lozano@littlehorizons.edu.co',    '+57 312 356 7891', 'Educación Física',      '2015-01-26', 'Activo'),
-(13, 'CC', '1134456789', 'Néstor',           'Julián',     'Quintero',    'Rincón',    'nestor.quintero@littlehorizons.edu.co','+57 314 467 8902', 'Ciencias Naturales',    '2013-07-15', 'Activo'),
-(14, 'CC', '1145567890', 'Adriana',          'Lucía',      'Ocampo',      'Salamanca', 'adriana.ocampo@littlehorizons.edu.co', '+57 320 578 9013', 'Ciencias Naturales',    '2018-01-29', 'Activo'),
-(15, 'CC', '1156678901', 'Álvaro',           'José',       'Sanabria',    'Torres',    'alvaro.sanabria@littlehorizons.edu.co','+57 321 689 0124', 'Ciencias Sociales',     '2011-08-01', 'Activo'),
-(16, 'CC', '1167789012', 'Diana',            'Marcela',    'Contreras',   'Pachón',    'diana.contreras@littlehorizons.edu.co','+57 322 790 1235', 'Ciencias Sociales',     '2016-02-01', 'Activo'),
-(17, 'CC', '1178890123', 'Laura',            'Ximena',     'Valcárcel',   'Gómez',     'laura.valcarcel@littlehorizons.edu.co','+57 323 801 2346', 'Matemáticas',           '2020-01-20', 'Activo'),
-(18, 'CC', '1189901234', 'Andrés',           'Felipe',     'Duarte',      'Mora',      'andres.duarte@littlehorizons.edu.co',  '+57 324 912 3457', 'Matemáticas',           '2019-01-28', 'Activo'),
-(19, 'CC', '1191012345', 'Mónica',           'Liliana',    'Fajardo',     'Céspedes',  'monica.fajardo@littlehorizons.edu.co', '+57 325 023 4568', 'Matemáticas',           '2021-01-25', 'Activo'),
-(20, 'CC', '1202123456', 'Camilo',           'Andrés',     'Niño',        'Rojas',     'camilo.nino@littlehorizons.edu.co',    '+57 326 134 5679', 'Matemáticas',           '2022-01-24', 'Activo'),
-(21, 'CC', '1213234567', 'Blanca',           'Nubia',      'Torrado',     'Pardo',     'blanca.torrado@littlehorizons.edu.co', '+57 327 245 6780', 'Matemáticas',           '2017-01-30', 'Activo'),
-(22, 'CC', '1224345678', 'María',            'Alexandra',  'Prieto',      'Cuello',    'maria.prieto@littlehorizons.edu.co',   '+57 328 356 7891', 'Español y Literatura',  '2020-02-03', 'Activo'),
-(23, 'CC', '1235456789', 'Édgar',            'Mauricio',   'Villamizar',  'Gómez',     'edgar.villamizar@littlehorizons.edu.co','+57 329 467 8902', 'Biología',              '2015-08-10', 'Activo'),
-(24, 'CC', '1246567890', 'Yolanda',          'Rosa',       'Patarroyo',   'Díaz',      'yolanda.patarroyo@littlehorizons.edu.co','+57 330 578 9013', 'Química',               '2018-07-23', 'Activo'),
-(25, 'CC', '1257678901', 'Gustavo',          'Adolfo',     'Rueda',       'Zabala',    'gustavo.rueda@littlehorizons.edu.co',  '+57 331 689 0124', 'Matemáticas',           '2014-02-10', 'Activo'),
-(26, 'CC', '1268789012', 'Ángela',           'Patricia',   'Rozo',        'Martín',    'angela.rozo@littlehorizons.edu.co',    '+57 332 790 1235', 'Español y Literatura',  '2021-08-16', 'Activo'),
-(27, 'CC', '1279890123', 'Julián',           'Camilo',     'Angarita',    'Suárez',    'julian.angarita@littlehorizons.edu.co','+57 333 801 2346', 'Física',                '2022-07-18', 'Activo'),
-(28, 'CC', '1281901234', 'Luz',              'Marina',     'Barbosa',     'Chaves',    'luz.barbosa@littlehorizons.edu.co',    '+57 334 912 3457', 'Educación Física',      '2016-07-11', 'Activo'),
-(29, 'CC', '1292012345', 'Édgar',            'Alfonso',    'Neira',       'Bahos',     'edgar.neira@littlehorizons.edu.co',    '+57 335 023 4568', 'Ciencias Sociales',     '2013-02-18', 'Activo'),
-(30, 'CC', '1303123456', 'Dora',             'Inés',       'Mora',        'Buitrago',  'dora.mora@littlehorizons.edu.co',      '+57 336 134 5679', 'Educación Física',      '2019-07-22', 'Activo');
-
--- ----------------------------------------------------------------------------
+(1, 'CC', '9000000001', 'Teacher01', NULL, 'Test', 'Record', 'teacher01@example.invalid', '0000000001', 'General', '2010-01-02', 'Activo'),
+(2, 'CC', '9000000002', 'Teacher02', NULL, 'Test', 'Record', 'teacher02@example.invalid', '0000000002', 'General', '2010-01-03', 'Activo'),
+(3, 'CC', '9000000003', 'Teacher03', NULL, 'Test', 'Record', 'teacher03@example.invalid', '0000000003', 'General', '2010-01-04', 'Activo'),
+(4, 'CC', '9000000004', 'Teacher04', NULL, 'Test', 'Record', 'teacher04@example.invalid', '0000000004', 'General', '2010-01-05', 'Activo'),
+(5, 'CC', '9000000005', 'Teacher05', NULL, 'Test', 'Record', 'teacher05@example.invalid', '0000000005', 'General', '2010-01-06', 'Activo'),
+(6, 'CC', '9000000006', 'Teacher06', NULL, 'Test', 'Record', 'teacher06@example.invalid', '0000000006', 'General', '2010-01-07', 'Activo'),
+(7, 'CC', '9000000007', 'Teacher07', NULL, 'Test', 'Record', 'teacher07@example.invalid', '0000000007', 'General', '2010-01-08', 'Activo'),
+(8, 'CC', '9000000008', 'Teacher08', NULL, 'Test', 'Record', 'teacher08@example.invalid', '0000000008', 'General', '2010-01-09', 'Activo'),
+(9, 'CC', '9000000009', 'Teacher09', NULL, 'Test', 'Record', 'teacher09@example.invalid', '0000000009', 'General', '2010-01-10', 'Activo'),
+(10, 'CC', '9000000010', 'Teacher10', NULL, 'Test', 'Record', 'teacher10@example.invalid', '0000000010', 'General', '2010-01-11', 'Activo'),
+(11, 'CC', '9000000011', 'Teacher11', NULL, 'Test', 'Record', 'teacher11@example.invalid', '0000000011', 'General', '2010-01-12', 'Activo'),
+(12, 'CC', '9000000012', 'Teacher12', NULL, 'Test', 'Record', 'teacher12@example.invalid', '0000000012', 'General', '2010-01-13', 'Activo'),
+(13, 'CC', '9000000013', 'Teacher13', NULL, 'Test', 'Record', 'teacher13@example.invalid', '0000000013', 'General', '2010-01-14', 'Activo'),
+(14, 'CC', '9000000014', 'Teacher14', NULL, 'Test', 'Record', 'teacher14@example.invalid', '0000000014', 'General', '2010-01-15', 'Activo'),
+(15, 'CC', '9000000015', 'Teacher15', NULL, 'Test', 'Record', 'teacher15@example.invalid', '0000000015', 'General', '2010-01-16', 'Activo'),
+(16, 'CC', '9000000016', 'Teacher16', NULL, 'Test', 'Record', 'teacher16@example.invalid', '0000000016', 'General', '2010-01-17', 'Activo'),
+(17, 'CC', '9000000017', 'Teacher17', NULL, 'Test', 'Record', 'teacher17@example.invalid', '0000000017', 'General', '2010-01-18', 'Activo'),
+(18, 'CC', '9000000018', 'Teacher18', NULL, 'Test', 'Record', 'teacher18@example.invalid', '0000000018', 'General', '2010-01-19', 'Activo'),
+(19, 'CC', '9000000019', 'Teacher19', NULL, 'Test', 'Record', 'teacher19@example.invalid', '0000000019', 'General', '2010-01-20', 'Activo'),
+(20, 'CC', '9000000020', 'Teacher20', NULL, 'Test', 'Record', 'teacher20@example.invalid', '0000000020', 'General', '2010-01-21', 'Activo'),
+(21, 'CC', '9000000021', 'Teacher21', NULL, 'Test', 'Record', 'teacher21@example.invalid', '0000000021', 'General', '2010-01-22', 'Activo'),
+(22, 'CC', '9000000022', 'Teacher22', NULL, 'Test', 'Record', 'teacher22@example.invalid', '0000000022', 'General', '2010-01-23', 'Activo'),
+(23, 'CC', '9000000023', 'Teacher23', NULL, 'Test', 'Record', 'teacher23@example.invalid', '0000000023', 'General', '2010-01-24', 'Activo'),
+(24, 'CC', '9000000024', 'Teacher24', NULL, 'Test', 'Record', 'teacher24@example.invalid', '0000000024', 'General', '2010-01-25', 'Activo'),
+(25, 'CC', '9000000025', 'Teacher25', NULL, 'Test', 'Record', 'teacher25@example.invalid', '0000000025', 'General', '2010-01-26', 'Activo'),
+(26, 'CC', '9000000026', 'Teacher26', NULL, 'Test', 'Record', 'teacher26@example.invalid', '0000000026', 'General', '2010-01-27', 'Activo'),
+(27, 'CC', '9000000027', 'Teacher27', NULL, 'Test', 'Record', 'teacher27@example.invalid', '0000000027', 'General', '2010-01-28', 'Activo'),
+(28, 'CC', '9000000028', 'Teacher28', NULL, 'Test', 'Record', 'teacher28@example.invalid', '0000000028', 'General', '2010-01-29', 'Activo'),
+(29, 'CC', '9000000029', 'Teacher29', NULL, 'Test', 'Record', 'teacher29@example.invalid', '0000000029', 'General', '2010-01-01', 'Activo'),
+(30, 'CC', '9000000030', 'Teacher30', NULL, 'Test', 'Record', 'teacher30@example.invalid', '0000000030', 'General', '2010-01-01', 'Activo');
 -- Students: 30 active students (ids 1-30). Grade assignment:
 --   1: Preescolar | 2-4: Primero | 5-7: Segundo | 8-10: Tercero | 11-13: Cuarto
 --   14-16: Quinto | 17-19: Sexto | 20-22: Séptimo | 23-26: Octavo
 --   27-28: Noveno | 29: Décimo | 30: Once
--- Minors carry a TI (Tarjeta de Identidad) document starting with 10.
+-- Synthetic test records use non-production identifiers and example.invalid emails.
 -- ----------------------------------------------------------------------------
 INSERT INTO estudiantes (id_estudiante, tipo_documento, numero_documento, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, fecha_nacimiento, genero, direccion, telefono, correo_electronico, tipo_sangre, alergias, condiciones_medicas, fecha_ingreso, estado) VALUES
-(1, 'TI', '1001234567', 'Santiago', 'Andrés', 'Restrepo', 'Álvarez', '2021-03-12', 'M', 'Calle 128 # 15-40, Bogotá', '+57 312 445 7788', 'santiago.restrepo@littlehorizons.edu.co', 'O+', 'Ninguna conocida', 'Ninguna', '2026-01-20', 'Activo'),
-(2, 'TI', '1002345678', 'Luna', 'Valentina', 'Gómez', 'Nuñez', '2019-05-20', 'F', 'Carrera 24 # 66-32, Bogotá', '+57 313 556 8899', 'luna.nunez@littlehorizons.edu.co', 'O+', 'Polen y ácaros', 'Ninguna', '2026-01-15', 'Activo'),
-(3, 'TI', '1003456789', 'Andrés', 'Mateo', 'Gómez', 'Nuñez', '2018-08-14', 'M', 'Carrera 24 # 66-32, Bogotá', '+57 313 556 8899', 'andres.nunez@littlehorizons.edu.co', 'A+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(4, 'TI', '1004567890', 'Estrellita', 'Sofía', 'Torres', 'Molina', '2019-02-10', 'F', 'Calle 45 # 23-17, Bogotá', '+57 310 667 9900', 'estrellita.torres@littlehorizons.edu.co', 'B+', 'Ninguna', 'Ninguna', '2026-01-18', 'Activo'),
-(5, 'TI', '1005678901', 'Camilo', 'José', 'Rodríguez', 'Peña', '2018-04-03', 'M', 'Carrera 11 # 89-05, Bogotá', '+57 311 778 0011', 'camilo.rodriguez@littlehorizons.edu.co', 'O-', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(6, 'TI', '1006789012', 'Salomé', 'Fernanda', 'Rodríguez', 'Peña', '2019-09-30', 'F', 'Carrera 11 # 89-05, Bogotá', '+57 311 778 0011', 'salome.rodriguez@littlehorizons.edu.co', 'AB+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(7, 'TI', '1007890123', 'Tomás', 'Esteban', 'Vargas', 'Cárdenas', '2018-01-25', 'M', 'Calle 100 # 52-21, Bogotá', '+57 314 889 1122', 'tomas.vargas@littlehorizons.edu.co', 'O+', 'Lactosa', 'Ninguna', '2026-01-20', 'Activo'),
-(8, 'TI', '1008901234', 'Sol', 'Beatriz', 'Martínez', 'Ortiz', '2017-06-18', 'F', 'Transversal 5 # 34-56, Bogotá', '+57 315 990 2233', 'sol.martinez@littlehorizons.edu.co', 'A+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(9, 'TI', '1009012345', 'Mateo', 'Alejandro', 'Martínez', 'Ortiz', '2018-11-08', 'M', 'Transversal 5 # 34-56, Bogotá', '+57 315 990 2233', 'mateo.martinez@littlehorizons.edu.co', 'O+', 'Ninguna', 'Asma leve', '2026-01-15', 'Activo'),
-(10, 'TI', '1010123456', 'Aurora', 'Valeria', 'Martínez', 'Ortiz', '2019-12-01', 'F', 'Transversal 5 # 34-56, Bogotá', '+57 315 990 2233', 'aurora.martinez@littlehorizons.edu.co', 'B+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(11, 'TI', '1011234567', 'Jerónimo', 'Esteban', 'Suárez', 'Betancur', '2016-07-22', 'M', 'Diagonal 78 # 40-12, Bogotá', '+57 316 001 3344', 'jeronimo.suarez@littlehorizons.edu.co', 'O+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(12, 'TI', '1012345678', 'Celeste', 'Antonia', 'Suárez', 'Betancur', '2017-03-15', 'F', 'Diagonal 78 # 40-12, Bogotá', '+57 316 001 3344', 'celeste.suarez@littlehorizons.edu.co', 'A-', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(13, 'TI', '1013456789', 'Julián', 'David', 'Rojas', 'Niño', '2016-10-05', 'M', 'Calle 63 # 12-08, Bogotá', '+57 317 112 4455', 'julian.rojas@littlehorizons.edu.co', 'B+', 'Maní y frutos secos', 'Porta autoinyector de epinefrina', '2026-01-19', 'Activo'),
-(14, 'TI', '1014567890', 'Estrella', 'Lucía', 'Ospina', 'Duarte', '2015-05-09', 'F', 'Carrera 68 # 110-45, Bogotá', '+57 318 223 5566', 'estrella.ospina@littlehorizons.edu.co', 'O+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(15, 'TI', '1015678901', 'Felipe', 'Ignacio', 'Ospina', 'Duarte', '2016-12-19', 'M', 'Carrera 68 # 110-45, Bogotá', '+57 318 223 5566', 'felipe.ospina@littlehorizons.edu.co', 'A+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(16, 'TI', '1016789012', 'Valeria', 'Josefina', 'Castro', 'Pardo', '2015-08-27', 'F', 'Calle 140 # 9-55, Bogotá', '+57 319 334 6677', 'valeria.castro@littlehorizons.edu.co', 'AB+', 'Ninguna', 'Ninguna', '2026-01-18', 'Activo'),
-(17, 'TI', '1017890123', 'Emilio', 'Alejandro', 'Herrera', 'Quintero', '2014-02-14', 'M', 'Avenida 19 # 123-30, Bogotá', '+57 320 445 7788', 'emilio.herrera@littlehorizons.edu.co', 'O+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(18, 'TI', '1018901234', 'Daniela', 'María', 'Herrera', 'Quintero', '2015-06-11', 'F', 'Avenida 19 # 123-30, Bogotá', '+57 320 445 7788', 'daniela.herrera@littlehorizons.edu.co', 'B+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(19, 'TI', '1019012345', 'Samuel', 'Esteban', 'Herrera', 'Quintero', '2016-04-28', 'M', 'Avenida 19 # 123-30, Bogotá', '+57 320 445 7788', 'samuel.herrera@littlehorizons.edu.co', 'O-', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(20, 'TI', '1020123456', 'Manuela', 'Isabel', 'Giraldo', 'Sáenz', '2014-09-17', 'F', 'Carrera 46 # 84-19, Bogotá', '+57 321 556 8899', 'manuela.giraldo@littlehorizons.edu.co', 'A+', 'Ninguna', 'Ninguna', '2026-01-20', 'Activo'),
-(21, 'TI', '1021234567', 'Juan', 'José', 'Pérez', 'Ledesma', '2013-01-30', 'M', 'Calle 134 # 31-77, Bogotá', '+57 322 667 9900', 'juan.perez@littlehorizons.edu.co', 'O+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(22, 'TI', '1022345678', 'Sara', 'Lucía', 'Pérez', 'Ledesma', '2014-11-23', 'F', 'Calle 134 # 31-77, Bogotá', '+57 322 667 9900', 'sara.perez@littlehorizons.edu.co', 'A+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(23, 'TI', '1023456789', 'Ricardo', 'Andrés', 'Blanco', 'Murillo', '2013-05-06', 'M', 'Calle 72 # 55-14, Bogotá', '+57 323 778 0011', 'ricardo.blanco@littlehorizons.edu.co', 'B+', 'Ninguna', 'Ninguna', '2026-01-18', 'Activo'),
-(24, 'TI', '1024567890', 'Catalina', 'Viviana', 'Jiménez', 'Robayo', '2012-03-19', 'F', 'Carrera 8 # 101-23, Bogotá', '+57 324 889 1122', 'catalina.jimenez@littlehorizons.edu.co', 'O+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(25, 'TI', '1025678901', 'Diego', 'Alejandro', 'Jiménez', 'Robayo', '2013-08-02', 'M', 'Carrera 8 # 101-23, Bogotá', '+57 324 889 1122', 'diego.jimenez@littlehorizons.edu.co', 'O+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(26, 'TI', '1026789012', 'Bruno', 'Esteban', 'Jiménez', 'Robayo', '2012-10-15', 'M', 'Carrera 8 # 101-23, Bogotá', '+57 324 889 1122', 'bruno.jimenez@littlehorizons.edu.co', 'A+', 'Polen', 'Ninguna', '2026-01-15', 'Activo'),
-(27, 'TI', '1027890123', 'Paola', 'Andrea', 'Frasser', 'Muñoz', '2011-07-07', 'F', 'Calle 118 # 27-64, Bogotá', '+57 325 990 2233', 'paola.frasser@littlehorizons.edu.co', 'O+', 'Ninguna', 'Ninguna', '2026-01-19', 'Activo'),
-(28, 'TI', '1028901234', 'Sebastián', 'Camilo', 'Cifuentes', 'Prieto', '2011-02-11', 'M', 'Avenida 68 # 95-102, Bogotá', '+57 326 001 3344', 'sebastian.cifuentes@littlehorizons.edu.co', 'B+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(29, 'TI', '1029012345', 'Antonia', 'María', 'Cifuentes', 'Prieto', '2011-09-25', 'F', 'Avenida 68 # 95-102, Bogotá', '+57 326 001 3344', 'antonia.cifuentes@littlehorizons.edu.co', 'O+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo'),
-(30, 'TI', '1030123456', 'Valentina', 'Carolina', 'Cárdenas', 'Lozano', '2009-06-30', 'F', 'Calle 26 # 13-42, Bogotá', '+57 327 112 4455', 'valentina.cardenas@littlehorizons.edu.co', 'A+', 'Ninguna', 'Ninguna', '2026-01-15', 'Activo');
-
--- ----------------------------------------------------------------------------
+(1, 'TI', '8000000001', 'Student01', NULL, 'Test', 'Record', '2010-01-02', 'M', 'TEST_ADDRESS_01', '0000000001', 'student01@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(2, 'TI', '8000000002', 'Student02', NULL, 'Test', 'Record', '2010-01-03', 'F', 'TEST_ADDRESS_02', '0000000002', 'student02@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(3, 'TI', '8000000003', 'Student03', NULL, 'Test', 'Record', '2010-01-04', 'M', 'TEST_ADDRESS_03', '0000000003', 'student03@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(4, 'TI', '8000000004', 'Student04', NULL, 'Test', 'Record', '2010-01-05', 'F', 'TEST_ADDRESS_04', '0000000004', 'student04@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(5, 'TI', '8000000005', 'Student05', NULL, 'Test', 'Record', '2010-01-06', 'M', 'TEST_ADDRESS_05', '0000000005', 'student05@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(6, 'TI', '8000000006', 'Student06', NULL, 'Test', 'Record', '2010-01-07', 'F', 'TEST_ADDRESS_06', '0000000006', 'student06@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(7, 'TI', '8000000007', 'Student07', NULL, 'Test', 'Record', '2010-01-08', 'M', 'TEST_ADDRESS_07', '0000000007', 'student07@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(8, 'TI', '8000000008', 'Student08', NULL, 'Test', 'Record', '2010-01-09', 'F', 'TEST_ADDRESS_08', '0000000008', 'student08@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(9, 'TI', '8000000009', 'Student09', NULL, 'Test', 'Record', '2010-01-10', 'M', 'TEST_ADDRESS_09', '0000000009', 'student09@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(10, 'TI', '8000000010', 'Student10', NULL, 'Test', 'Record', '2010-01-11', 'F', 'TEST_ADDRESS_10', '0000000010', 'student10@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(11, 'TI', '8000000011', 'Student11', NULL, 'Test', 'Record', '2010-01-12', 'M', 'TEST_ADDRESS_11', '0000000011', 'student11@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(12, 'TI', '8000000012', 'Student12', NULL, 'Test', 'Record', '2010-01-13', 'F', 'TEST_ADDRESS_12', '0000000012', 'student12@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(13, 'TI', '8000000013', 'Student13', NULL, 'Test', 'Record', '2010-01-14', 'M', 'TEST_ADDRESS_13', '0000000013', 'student13@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(14, 'TI', '8000000014', 'Student14', NULL, 'Test', 'Record', '2010-01-15', 'F', 'TEST_ADDRESS_14', '0000000014', 'student14@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(15, 'TI', '8000000015', 'Student15', NULL, 'Test', 'Record', '2010-01-16', 'M', 'TEST_ADDRESS_15', '0000000015', 'student15@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(16, 'TI', '8000000016', 'Student16', NULL, 'Test', 'Record', '2010-01-17', 'F', 'TEST_ADDRESS_16', '0000000016', 'student16@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(17, 'TI', '8000000017', 'Student17', NULL, 'Test', 'Record', '2010-01-18', 'M', 'TEST_ADDRESS_17', '0000000017', 'student17@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(18, 'TI', '8000000018', 'Student18', NULL, 'Test', 'Record', '2010-01-19', 'F', 'TEST_ADDRESS_18', '0000000018', 'student18@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(19, 'TI', '8000000019', 'Student19', NULL, 'Test', 'Record', '2010-01-20', 'M', 'TEST_ADDRESS_19', '0000000019', 'student19@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(20, 'TI', '8000000020', 'Student20', NULL, 'Test', 'Record', '2010-01-21', 'F', 'TEST_ADDRESS_20', '0000000020', 'student20@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(21, 'TI', '8000000021', 'Student21', NULL, 'Test', 'Record', '2010-01-22', 'M', 'TEST_ADDRESS_21', '0000000021', 'student21@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(22, 'TI', '8000000022', 'Student22', NULL, 'Test', 'Record', '2010-01-23', 'F', 'TEST_ADDRESS_22', '0000000022', 'student22@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(23, 'TI', '8000000023', 'Student23', NULL, 'Test', 'Record', '2010-01-24', 'M', 'TEST_ADDRESS_23', '0000000023', 'student23@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(24, 'TI', '8000000024', 'Student24', NULL, 'Test', 'Record', '2010-01-25', 'F', 'TEST_ADDRESS_24', '0000000024', 'student24@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(25, 'TI', '8000000025', 'Student25', NULL, 'Test', 'Record', '2010-01-26', 'M', 'TEST_ADDRESS_25', '0000000025', 'student25@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(26, 'TI', '8000000026', 'Student26', NULL, 'Test', 'Record', '2010-01-27', 'F', 'TEST_ADDRESS_26', '0000000026', 'student26@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(27, 'TI', '8000000027', 'Student27', NULL, 'Test', 'Record', '2010-01-28', 'M', 'TEST_ADDRESS_27', '0000000027', 'student27@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(28, 'TI', '8000000028', 'Student28', NULL, 'Test', 'Record', '2010-01-29', 'F', 'TEST_ADDRESS_28', '0000000028', 'student28@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(29, 'TI', '8000000029', 'Student29', NULL, 'Test', 'Record', '2010-01-01', 'M', 'TEST_ADDRESS_29', '0000000029', 'student29@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo'),
+(30, 'TI', '8000000030', 'Student30', NULL, 'Test', 'Record', '2010-01-01', 'F', 'TEST_ADDRESS_30', '0000000030', 'student30@example.invalid', 'O+', NULL, NULL, '2026-01-15', 'Activo');
 -- Guardians: 30 guardians (ids 1-30). Ids 1-18 are the primary (financial)
 -- guardians of the families below; ids 19-30 are second parents or secondary
 -- contacts. Families with several children enrolled:
@@ -516,38 +550,36 @@ INSERT INTO estudiantes (id_estudiante, tipo_documento, numero_documento, primer
 --   Guardian 7: 21, 22 | Guardian 8: 24, 25, 26 | Guardian 9: 28, 29
 -- ----------------------------------------------------------------------------
 INSERT INTO acudientes (id_acudiente, tipo_documento, numero_documento, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, parentesco, telefono_principal, telefono_secundario, correo_electronico, direccion, ocupacion, es_responsable_financiero) VALUES
-(1,  'CC', '1014587923', 'Sofía',         'Atropos',    'Nuñez',      NULL,         'Madre',  '+57 310 214 5678', NULL,              'sofia.nunez.atropos@gmail.com',     'Carrera 24 # 66-32, Bogotá',    'Ingeniera de Sistemas',        TRUE),
-(2, 'CC', '1023658741', 'Estrella', 'Adriana', 'Rodríguez', 'Salas', 'Madre', '+57 311 325 6789', '+57 311 325 6790', 'estrella.rodriguez@yahoo.com', 'Carrera 11 # 89-05, Bogotá', 'Contadora Pública', TRUE),
-(3, 'CC', '1032145698', 'Santiago', 'Iván', 'Martínez', 'Cano', 'Padre', '+57 312 436 7890', NULL, 'santiago.martinez@gmail.com', 'Transversal 5 # 34-56, Bogotá', 'Médico Cirujano', TRUE),
-(4, 'CC', '1045723698', 'Luna', 'Marcela', 'Suárez', 'Vélez', 'Madre', '+57 313 547 8901', '+57 313 547 8902', 'luna.suarez@hotmail.com', 'Diagonal 78 # 40-12, Bogotá', 'Abogada', TRUE),
-(5, 'CC', '1025478963', 'Santiago', 'Alberto', 'Ospina', 'Rueda', 'Padre', '+57 314 658 9012', NULL, 'santiago.ospina@gmail.com', 'Carrera 68 # 110-45, Bogotá', 'Arquitecto', TRUE),
-(6, 'CC', '1039852147', 'Estrellita', 'Inés', 'Herrera', 'Mora', 'Madre', '+57 315 769 0123', '+57 315 769 0124', 'estrellita.herrera@gmail.com', 'Avenida 19 # 123-30, Bogotá', 'Docente Universitaria', TRUE),
-(7, 'CC', '1051236478', 'Sol', 'Eduardo', 'Pérez', 'Domínguez', 'Padre', '+57 316 870 1234', NULL, 'sol.perez@hotmail.com', 'Calle 134 # 31-77, Bogotá', 'Empresario', TRUE),
-(8, 'CE', '5612345678', 'Jerónimo', 'Eduardo', 'Robayo', 'Salazar', 'Padre', '+57 317 981 2345', NULL, 'jeronimo.robayo@gmail.com', 'Carrera 8 # 101-23, Bogotá', 'Piloto Comercial', TRUE),
-(9, 'CC', '1062314578', 'Cielo', 'Mauricio', 'Cifuentes', 'Prieto', 'Padre', '+57 318 092 3456', '+57 318 092 3457', 'cielo.cifuentes@gmail.com', 'Avenida 68 # 95-102, Bogotá', 'Economista', TRUE),
-(10, 'CC', '1028945631', 'Aurora', 'Milena', 'Álvarez', 'Ríos', 'Madre', '+57 319 103 4567', NULL, 'aurora.alvarez@gmail.com', 'Calle 128 # 15-40, Bogotá', 'Diseñadora Gráfica', TRUE),
-(11, 'CC', '1037152894', 'Celeste', 'Eugenia', 'Molina', 'Garzón', 'Madre', '+57 320 214 5678', '+57 320 214 5679', 'celeste.molina@yahoo.com', 'Calle 45 # 23-17, Bogotá', 'Enfermera Jefe', TRUE),
-(12, 'CC', '1042963571', 'Luz', 'Clemencia', 'Cárdenas', 'Pinto', 'Madre', '+57 321 325 6789', NULL, 'luz.cardenas@hotmail.com', 'Calle 100 # 52-21, Bogotá', 'Psicóloga', TRUE),
-(13, 'CC', '1056341278', 'Santiago', 'Javier', 'Rojas', 'Niño', 'Padre', '+57 322 436 7890', '+57 322 436 7891', 'santiago.rojas@gmail.com', 'Calle 63 # 12-08, Bogotá', 'Administrador de Empresas', TRUE),
-(14, 'CC', '1013624975', 'Sol', 'Beatriz', 'Castro', 'Pardo', 'Madre', '+57 323 547 8901', NULL, 'sol.castro@gmail.com', 'Calle 140 # 9-55, Bogotá', 'Nutricionista', TRUE),
-(15, 'CC', '1068471592', 'Andrés', 'Pablo', 'Giraldo', 'Sáenz', 'Padre', '+57 324 658 9012', '+57 324 658 9013', 'andres.giraldo@gmail.com', 'Carrera 46 # 84-19, Bogotá', 'Ingeniero de Sistemas', TRUE),
-(16, 'CC', '1025197438', 'Luna', 'Susana', 'Blanco', 'Murillo', 'Madre', '+57 325 769 0123', NULL, 'luna.blanco@hotmail.com', 'Calle 72 # 55-14, Bogotá', 'Veterinaria', TRUE),
-(17, 'CC', '1047362589', 'Estrellita', 'Rocío', 'Frasser', 'Muñoz', 'Madre', '+57 326 870 1234', NULL, 'estrellita.frasser@gmail.com', 'Calle 118 # 27-64, Bogotá', 'Bacterióloga', TRUE),
-(18, 'CC', '1031527964', 'Cielo', 'Fernanda', 'Lozano', 'de Cárdenas', 'Madre', '+57 327 981 2345', '+57 327 981 2346', 'cielo.lozano@gmail.com', 'Calle 26 # 13-42, Bogotá', 'Arquitecta', TRUE),
-(19, 'CC', '1052714369', 'Aurora', 'María', 'Ramírez', 'Nieto', 'Madre', '+57 310 092 3456', NULL, 'aurora.ramirez@gmail.com', 'Carrera 24 # 66-32, Bogotá', 'Comerciante', FALSE),
-(20, 'CC', '1019623574', 'Pedro', 'Santiago', 'Salas', 'Contreras', 'Padre', '+57 310 092 3456', NULL, 'pedro.salas@gmail.com', 'Carrera 11 # 89-05, Bogotá', 'Conductor Ejecutivo', FALSE),
-(21, 'CC', '1064382917', 'Estrella', 'Fernanda', 'Ortiz', 'Guarnizo', 'Madre', '+57 311 203 4567', NULL, 'estrella.ortiz@gmail.com', 'Transversal 5 # 34-56, Bogotá', 'Odontóloga', FALSE),
-(22, 'CC', '1023478156', 'Santiago', 'Eduardo', 'Betancur', 'Sáenz', 'Padre', '+57 312 314 5678', NULL, 'santiago.betancur@yahoo.com', 'Diagonal 78 # 40-12, Bogotá', 'Piloto de Avión', FALSE),
-(23, 'CC', '1058931427', 'Celeste', 'Patricia', 'Duarte', 'Mejía', 'Madre', '+57 313 425 6789', NULL, 'celeste.duarte@gmail.com', 'Carrera 68 # 110-45, Bogotá', 'Publicista', FALSE),
-(24, 'Pasaporte', 'A12345678', 'Aurora', 'Rafael', 'Quintero', 'Valdés', 'Padre', '+57 314 536 7890', NULL, 'aurora.quintero@hotmail.com', 'Avenida 19 # 123-30, Bogotá', 'Consultor', FALSE),
-(25, 'CC', '1034729681', 'Sol', 'Milagros', 'Ledesma', 'Arciniegas', 'Madre', '+57 315 647 8901', NULL, 'sol.ledesma@gmail.com', 'Calle 134 # 31-77, Bogotá', 'Comerciante', FALSE),
-(26, 'CC', '1045827193', 'Estrellita', 'Constanza', 'Jiménez', 'Pardo', 'Madre', '+57 316 758 9012', NULL, 'estrellita.jimenez@gmail.com', 'Carrera 8 # 101-23, Bogotá', 'Fisioterapeuta', FALSE),
-(27, 'CC', '1017523496', 'Luna', 'Amparo', 'Prieto', 'Mora', 'Madre', '+57 317 869 0123', NULL, 'luna.prieto@yahoo.com', 'Avenida 68 # 95-102, Bogotá', 'Ingeniera Industrial', FALSE),
-(28, 'CC', '1062145873', 'Andrés', 'Mauricio', 'Restrepo', 'Zuluaga', 'Padre', '+57 318 970 1234', NULL, 'andres.restrepo@gmail.com', 'Calle 128 # 15-40, Bogotá', 'Comerciante', FALSE),
-(29, 'CC', '1026893451', 'Santiago', 'Camilo', 'Torres', 'Álvarez', 'Padre', '+57 319 081 2345', NULL, 'santiago.torres@gmail.com', 'Calle 45 # 23-17, Bogotá', 'Militar Activo', FALSE),
-(30, 'CE', '5623456789', 'Sol', 'Fernando', 'Vargas', 'Lleras', 'Padre', '+57 320 192 3456', NULL, 'sol.vargas@hotmail.com', 'Calle 100 # 52-21, Bogotá', 'Abogado', FALSE);
-
--- ----------------------------------------------------------------------------
+(1, 'CC', '7000000001', 'Guardian01', NULL, 'Test', 'Record', 'Responsible', '0000000001', NULL, 'guardian01@example.invalid', 'TEST_ADDRESS_01', 'Test occupation', TRUE),
+(2, 'CC', '7000000002', 'Guardian02', NULL, 'Test', 'Record', 'Responsible', '0000000002', NULL, 'guardian02@example.invalid', 'TEST_ADDRESS_02', 'Test occupation', TRUE),
+(3, 'CC', '7000000003', 'Guardian03', NULL, 'Test', 'Record', 'Responsible', '0000000003', NULL, 'guardian03@example.invalid', 'TEST_ADDRESS_03', 'Test occupation', TRUE),
+(4, 'CC', '7000000004', 'Guardian04', NULL, 'Test', 'Record', 'Responsible', '0000000004', NULL, 'guardian04@example.invalid', 'TEST_ADDRESS_04', 'Test occupation', TRUE),
+(5, 'CC', '7000000005', 'Guardian05', NULL, 'Test', 'Record', 'Responsible', '0000000005', NULL, 'guardian05@example.invalid', 'TEST_ADDRESS_05', 'Test occupation', TRUE),
+(6, 'CC', '7000000006', 'Guardian06', NULL, 'Test', 'Record', 'Responsible', '0000000006', NULL, 'guardian06@example.invalid', 'TEST_ADDRESS_06', 'Test occupation', TRUE),
+(7, 'CC', '7000000007', 'Guardian07', NULL, 'Test', 'Record', 'Responsible', '0000000007', NULL, 'guardian07@example.invalid', 'TEST_ADDRESS_07', 'Test occupation', TRUE),
+(8, 'CC', '7000000008', 'Guardian08', NULL, 'Test', 'Record', 'Responsible', '0000000008', NULL, 'guardian08@example.invalid', 'TEST_ADDRESS_08', 'Test occupation', TRUE),
+(9, 'CC', '7000000009', 'Guardian09', NULL, 'Test', 'Record', 'Responsible', '0000000009', NULL, 'guardian09@example.invalid', 'TEST_ADDRESS_09', 'Test occupation', TRUE),
+(10, 'CC', '7000000010', 'Guardian10', NULL, 'Test', 'Record', 'Responsible', '0000000010', NULL, 'guardian10@example.invalid', 'TEST_ADDRESS_10', 'Test occupation', TRUE),
+(11, 'CC', '7000000011', 'Guardian11', NULL, 'Test', 'Record', 'Responsible', '0000000011', NULL, 'guardian11@example.invalid', 'TEST_ADDRESS_11', 'Test occupation', TRUE),
+(12, 'CC', '7000000012', 'Guardian12', NULL, 'Test', 'Record', 'Responsible', '0000000012', NULL, 'guardian12@example.invalid', 'TEST_ADDRESS_12', 'Test occupation', TRUE),
+(13, 'CC', '7000000013', 'Guardian13', NULL, 'Test', 'Record', 'Responsible', '0000000013', NULL, 'guardian13@example.invalid', 'TEST_ADDRESS_13', 'Test occupation', TRUE),
+(14, 'CC', '7000000014', 'Guardian14', NULL, 'Test', 'Record', 'Responsible', '0000000014', NULL, 'guardian14@example.invalid', 'TEST_ADDRESS_14', 'Test occupation', TRUE),
+(15, 'CC', '7000000015', 'Guardian15', NULL, 'Test', 'Record', 'Responsible', '0000000015', NULL, 'guardian15@example.invalid', 'TEST_ADDRESS_15', 'Test occupation', TRUE),
+(16, 'CC', '7000000016', 'Guardian16', NULL, 'Test', 'Record', 'Responsible', '0000000016', NULL, 'guardian16@example.invalid', 'TEST_ADDRESS_16', 'Test occupation', TRUE),
+(17, 'CC', '7000000017', 'Guardian17', NULL, 'Test', 'Record', 'Responsible', '0000000017', NULL, 'guardian17@example.invalid', 'TEST_ADDRESS_17', 'Test occupation', TRUE),
+(18, 'CC', '7000000018', 'Guardian18', NULL, 'Test', 'Record', 'Responsible', '0000000018', NULL, 'guardian18@example.invalid', 'TEST_ADDRESS_18', 'Test occupation', TRUE),
+(19, 'CC', '7000000019', 'Guardian19', NULL, 'Test', 'Record', 'Responsible', '0000000019', NULL, 'guardian19@example.invalid', 'TEST_ADDRESS_19', 'Test occupation', FALSE),
+(20, 'CC', '7000000020', 'Guardian20', NULL, 'Test', 'Record', 'Responsible', '0000000020', NULL, 'guardian20@example.invalid', 'TEST_ADDRESS_20', 'Test occupation', FALSE),
+(21, 'CC', '7000000021', 'Guardian21', NULL, 'Test', 'Record', 'Responsible', '0000000021', NULL, 'guardian21@example.invalid', 'TEST_ADDRESS_21', 'Test occupation', FALSE),
+(22, 'CC', '7000000022', 'Guardian22', NULL, 'Test', 'Record', 'Responsible', '0000000022', NULL, 'guardian22@example.invalid', 'TEST_ADDRESS_22', 'Test occupation', FALSE),
+(23, 'CC', '7000000023', 'Guardian23', NULL, 'Test', 'Record', 'Responsible', '0000000023', NULL, 'guardian23@example.invalid', 'TEST_ADDRESS_23', 'Test occupation', FALSE),
+(24, 'CC', '7000000024', 'Guardian24', NULL, 'Test', 'Record', 'Responsible', '0000000024', NULL, 'guardian24@example.invalid', 'TEST_ADDRESS_24', 'Test occupation', FALSE),
+(25, 'CC', '7000000025', 'Guardian25', NULL, 'Test', 'Record', 'Responsible', '0000000025', NULL, 'guardian25@example.invalid', 'TEST_ADDRESS_25', 'Test occupation', FALSE),
+(26, 'CC', '7000000026', 'Guardian26', NULL, 'Test', 'Record', 'Responsible', '0000000026', NULL, 'guardian26@example.invalid', 'TEST_ADDRESS_26', 'Test occupation', FALSE),
+(27, 'CC', '7000000027', 'Guardian27', NULL, 'Test', 'Record', 'Responsible', '0000000027', NULL, 'guardian27@example.invalid', 'TEST_ADDRESS_27', 'Test occupation', FALSE),
+(28, 'CC', '7000000028', 'Guardian28', NULL, 'Test', 'Record', 'Responsible', '0000000028', NULL, 'guardian28@example.invalid', 'TEST_ADDRESS_28', 'Test occupation', FALSE),
+(29, 'CC', '7000000029', 'Guardian29', NULL, 'Test', 'Record', 'Responsible', '0000000029', NULL, 'guardian29@example.invalid', 'TEST_ADDRESS_29', 'Test occupation', FALSE),
+(30, 'CC', '7000000030', 'Guardian30', NULL, 'Test', 'Record', 'Responsible', '0000000030', NULL, 'guardian30@example.invalid', 'TEST_ADDRESS_30', 'Test occupation', FALSE);
 -- Student-guardian links: every student has at least one primary guardian;
 -- second parents are added as secondary contacts for most students.
 -- ----------------------------------------------------------------------------
@@ -1105,7 +1137,7 @@ INSERT INTO pagos (id_pago, id_estudiante, id_acudiente, id_concepto, monto_paga
 -- Electronic invoices (simulated): invoices issued for 10 of the payments.
 -- Files are generated as .txt documents, as in the school ERP prototype.
 -- ----------------------------------------------------------------------------
-INSERT INTO facturas (id_factura, numero_factura, id_pago, fecha_emision, cufe, nombre_archivo_pdf, ruta_archivo) VALUES
+INSERT INTO facturas (id_factura, numero_factura, id_pago, fecha_emision, cufe, nombre_archivo_txt, ruta_archivo) VALUES
 (1,  'F-2026-00001', 1,  '2026-01-10', 'cufe-a1f4c9e2b7d304518a2f6e0b93c1d7a4', 'factura_F-2026-00001.txt', '/var/little_horizons/facturas/2026/factura_F-2026-00001.txt'),
 (2,  'F-2026-00002', 2,  '2026-02-05', 'cufe-8b2e6d4f0a9c13257e4b8f6d2c0a9e35', 'factura_F-2026-00002.txt', '/var/little_horizons/facturas/2026/factura_F-2026-00002.txt'),
 (3,  'F-2026-00003', 3,  '2026-01-10', 'cufe-3d7b1f8c6a2e940b5c8d7e1f3a6b0c29', 'factura_F-2026-00003.txt', '/var/little_horizons/facturas/2026/factura_F-2026-00003.txt'),
@@ -1183,6 +1215,10 @@ INSERT INTO prestamos_profesor (id_prestamo, id_recurso, id_profesor, fecha_pres
 (7, 10, 15, '2026-08-12', '2026-08-26', '2026-08-25', 'Devuelto', NULL),
 (8, 24, 16, '2026-11-03', '2026-11-17', NULL,         'Activo',   NULL);
 
+-- Application users are bootstrapped outside this script. The application
+-- reads ERP_INITIAL_ADMIN_USERNAME and ERP_INITIAL_ADMIN_PASSWORD only when
+-- the usuarios table is empty, then stores a PBKDF2 hash.
+
 -- ----------------------------------------------------------------------------
 -- Final verification: row counts per table. The last line prints the total
 -- number of rows loaded across all tables.
@@ -1209,6 +1245,7 @@ UNION ALL SELECT 'categorias_recurso',     COUNT(*) FROM categorias_recurso
 UNION ALL SELECT 'recursos',               COUNT(*) FROM recursos
 UNION ALL SELECT 'prestamos_estudiante',   COUNT(*) FROM prestamos_estudiante
 UNION ALL SELECT 'prestamos_profesor',     COUNT(*) FROM prestamos_profesor
+UNION ALL SELECT 'usuarios',               COUNT(*) FROM usuarios
 UNION ALL SELECT 'TOTAL',                  (SELECT COUNT(*) FROM grados
     + (SELECT COUNT(*) FROM estudiantes) + (SELECT COUNT(*) FROM acudientes)
     + (SELECT COUNT(*) FROM estudiante_acudiente) + (SELECT COUNT(*) FROM matriculas)

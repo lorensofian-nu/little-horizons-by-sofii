@@ -18,6 +18,9 @@ public class TeacherAssignment {
     private int subjectId;
     private int academicYear;
     private String section;
+    private String weekday;
+    private java.time.LocalTime startTime;
+    private java.time.LocalTime endTime;
     private LocalDateTime createdAt;
 
     /** Display-only fields filled by JOIN queries. */
@@ -32,11 +35,21 @@ public class TeacherAssignment {
     /** Full constructor with the persisted columns. */
     public TeacherAssignment(int id, int teacherId, int subjectId, int academicYear,
                              String section, LocalDateTime createdAt) {
+        this(id, teacherId, subjectId, academicYear, section, null, null, null, createdAt);
+    }
+
+    public TeacherAssignment(int id, int teacherId, int subjectId, int academicYear,
+                             String section, String weekday,
+                             java.time.LocalTime startTime, java.time.LocalTime endTime,
+                             LocalDateTime createdAt) {
         this.id = id;
         this.teacherId = teacherId;
         this.subjectId = subjectId;
         this.academicYear = academicYear;
         this.section = section;
+        this.weekday = weekday;
+        this.startTime = startTime;
+        this.endTime = endTime;
         this.createdAt = createdAt;
     }
 
@@ -46,13 +59,25 @@ public class TeacherAssignment {
         return new TeacherAssignment(0, teacherId, subjectId, academicYear, section, null);
     }
 
+    public static TeacherAssignment newAssignment(int teacherId, int subjectId,
+                                                  int academicYear, String section,
+                                                  String weekday,
+                                                  java.time.LocalTime startTime,
+                                                  java.time.LocalTime endTime) {
+        return new TeacherAssignment(0, teacherId, subjectId, academicYear, section,
+                weekday, startTime, endTime, null);
+    }
+
     /** Short human-readable description used in listings. */
     public String toDisplayString() {
-        return String.format("Year %d | Section %s | %s (%s)",
+        return String.format("Year %d | Section %s | %s (%s) | %s %s-%s",
                 academicYear,
                 section == null ? "-" : section,
                 subjectName == null ? ("Subject #" + subjectId) : subjectName,
-                subjectCode == null ? "?" : subjectCode);
+                subjectCode == null ? "?" : subjectCode,
+                weekday == null ? "No schedule" : weekday,
+                startTime == null ? "--:--" : startTime,
+                endTime == null ? "--:--" : endTime);
     }
 
     public int getId() {
@@ -93,6 +118,30 @@ public class TeacherAssignment {
 
     public void setSection(String section) {
         this.section = section;
+    }
+
+    public String getWeekday() {
+        return weekday;
+    }
+
+    public void setWeekday(String weekday) {
+        this.weekday = weekday;
+    }
+
+    public java.time.LocalTime getStartTime() {
+        return startTime;
+    }
+
+    public void setStartTime(java.time.LocalTime startTime) {
+        this.startTime = startTime;
+    }
+
+    public java.time.LocalTime getEndTime() {
+        return endTime;
+    }
+
+    public void setEndTime(java.time.LocalTime endTime) {
+        this.endTime = endTime;
     }
 
     public LocalDateTime getCreatedAt() {

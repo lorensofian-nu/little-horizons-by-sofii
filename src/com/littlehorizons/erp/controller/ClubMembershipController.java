@@ -66,23 +66,26 @@ public class ClubMembershipController {
         if (student == null) {
             return;
         }
-        // Business rule: never exceed the club capacity (checked BEFORE saving).
-        if (activeMembers >= capacity) {
-            ConsoleUtils.printError("The club \"" + club.getClubName() + "\" is full ("
-                    + activeMembers + "/" + capacity + " members). Enrollment rejected.");
-            return;
-        }
-        if (membershipDao.activeMembershipExists(student.getStudentId(), club.getClubId())) {
-            ConsoleUtils.printError(student.getFullName() + " is already an active member of this club.");
-            return;
-        }
         LocalDate joinDate = ConsoleUtils.readOptionalDate("Join date", LocalDate.now());
         ClubMembership membership = new ClubMembership();
         membership.setStudentId(student.getStudentId());
         membership.setClubId(club.getClubId());
         membership.setJoinDate(joinDate);
         membership.setMembershipStatus(MembershipStatus.ACTIVE);
-        int generatedId = membershipDao.save(membership);
+        int generatedId = membershipDao.saveIfCapacityAvailable(membership);
+        if (generatedId == -1) {
+            ConsoleUtils.printError("The club is full. Enrollment rejected.");
+            return;
+        }
+        if (generatedId == -2) {
+            ConsoleUtils.printError(student.getFullName()
+                    + " is already an active member of this club.");
+            return;
+        }
+        if (generatedId < 0) {
+            ConsoleUtils.printError("The selected club is not available.");
+            return;
+        }
         ConsoleUtils.printSuccess(student.getFullName() + " enrolled in \""
                 + club.getClubName() + "\" (membership " + generatedId + "). Occupancy now "
                 + (activeMembers + 1) + "/" + capacity + ".");

@@ -30,7 +30,7 @@ public interface TeacherDao {
     /** Changes only the {@code estado} column (preferred over hard delete). */
     boolean updateStatus(int teacherId, TeacherStatus status) throws SQLException;
 
-    /** Hard-deletes a teacher. Assignments are removed by ON DELETE CASCADE. */
+    /** Hard-deletes a teacher when no historical record still references it. */
     boolean delete(int id) throws SQLException;
 
     /** Finds a teacher by document number ({@code numero_documento}, unique). */

@@ -7,6 +7,7 @@ import com.littlehorizons.erp.model.PaymentMethod;
 import com.littlehorizons.erp.model.PaymentPeriod;
 import com.littlehorizons.erp.model.StudentSummary;
 import com.littlehorizons.erp.util.DatabaseConnection;
+import com.littlehorizons.erp.util.DocumentSequenceUtil;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -150,20 +151,17 @@ public class PaymentDaoImpl implements PaymentDao {
     @Override
     public String nextReceiptNumber(int academicYear) throws SQLException {
         String prefix = "REC-" + academicYear + "-";
-        String sql = "SELECT MAX(numero_recibo) FROM pagos WHERE numero_recibo LIKE ?";
-        int nextSequence = 1;
-        try (Connection connection = DatabaseConnection.getInstance().getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, prefix + "%");
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (resultSet.next() && resultSet.getString(1) != null) {
-                    String lastReceipt = resultSet.getString(1);
-                    String sequencePart = lastReceipt.substring(prefix.length());
-                    nextSequence = Integer.parseInt(sequencePart) + 1;
-                }
+        try (Connection connection = DatabaseConnection.getInstance().getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                String next = DocumentSequenceUtil.next(connection, prefix, "receipt");
+                connection.commit();
+                return next;
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
             }
         }
-        return String.format("%s%06d", prefix, nextSequence);
     }
 
     // ------------------------------------------------------------------

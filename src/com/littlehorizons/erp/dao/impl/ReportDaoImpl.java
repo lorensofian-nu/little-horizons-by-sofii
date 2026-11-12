@@ -53,7 +53,7 @@ public class ReportDaoImpl implements ReportDao {
 
     private static final String TOTAL_PAYMENTS_IN_YEAR =
             "SELECT COALESCE(SUM(monto_pagado), 0) FROM pagos "
-                    + "WHERE YEAR(fecha_pago) = ?";
+                    + "WHERE fecha_pago >= ? AND fecha_pago < ?";
 
     private static final String COUNT_RESOURCES_BY_STATE =
             "SELECT estado_recurso, COUNT(*) FROM recursos "
@@ -78,7 +78,7 @@ public class ReportDaoImpl implements ReportDao {
                     + "a.fecha_asistencia, a.estado_asistencia "
                     + "FROM asistencias a "
                     + "JOIN estudiantes e ON e.id_estudiante = a.id_estudiante "
-                    + "WHERE YEAR(a.fecha_asistencia) = ? "
+                    + "WHERE a.fecha_asistencia >= ? AND a.fecha_asistencia < ? "
                     + "ORDER BY nombre_completo, a.fecha_asistencia";
 
     private static final String FIND_PAYMENTS_BY_YEAR =
@@ -87,7 +87,7 @@ public class ReportDaoImpl implements ReportDao {
                     + "FROM pagos p "
                     + "JOIN estudiantes e ON e.id_estudiante = p.id_estudiante "
                     + "JOIN conceptos_pago c ON c.id_concepto = p.id_concepto "
-                    + "WHERE YEAR(p.fecha_pago) = ? "
+                    + "WHERE p.fecha_pago >= ? AND p.fecha_pago < ? "
                     + "ORDER BY nombre_completo, p.fecha_pago";
 
     private static final String FIND_LAST_PAYMENT_DATES =
@@ -122,7 +122,7 @@ public class ReportDaoImpl implements ReportDao {
                     + "FROM participantes_evento pe "
                     + "JOIN eventos ev ON ev.id_evento = pe.id_evento "
                     + "JOIN estudiantes e ON e.id_estudiante = pe.id_estudiante "
-                    + "WHERE YEAR(ev.fecha_evento) = ? "
+                    + "WHERE ev.fecha_evento >= ? AND ev.fecha_evento < ? "
                     + "ORDER BY ev.fecha_evento, nombre_completo";
 
     private static final String COUNT_LOANS_BY_STATE =
@@ -183,8 +183,10 @@ public class ReportDaoImpl implements ReportDao {
 
     @Override
     public double totalPaymentsInYear(int year) throws SQLException {
+        Date start = Date.valueOf(LocalDate.of(year, 1, 1));
+        Date end = Date.valueOf(LocalDate.of(year + 1, 1, 1));
         try (Connection connection = openConnection();
-             PreparedStatement statement = prepare(connection, TOTAL_PAYMENTS_IN_YEAR, year);
+             PreparedStatement statement = prepare(connection, TOTAL_PAYMENTS_IN_YEAR, start, end);
              ResultSet resultSet = statement.executeQuery()) {
             resultSet.next();
             return resultSet.getDouble(1);
@@ -218,8 +220,10 @@ public class ReportDaoImpl implements ReportDao {
     @Override
     public List<AttendanceRecord> findAttendanceByYear(int year) throws SQLException {
         List<AttendanceRecord> records = new ArrayList<>();
+        Date start = Date.valueOf(LocalDate.of(year, 1, 1));
+        Date end = Date.valueOf(LocalDate.of(year + 1, 1, 1));
         try (Connection connection = openConnection();
-             PreparedStatement statement = prepare(connection, FIND_ATTENDANCE_BY_YEAR, year);
+             PreparedStatement statement = prepare(connection, FIND_ATTENDANCE_BY_YEAR, start, end);
              ResultSet resultSet = statement.executeQuery()) {
             while (resultSet.next()) {
                 Date attendanceDate = resultSet.getDate("fecha_asistencia");
@@ -236,8 +240,10 @@ public class ReportDaoImpl implements ReportDao {
     @Override
     public List<PaymentRecord> findPaymentsByYear(int year) throws SQLException {
         List<PaymentRecord> records = new ArrayList<>();
+        Date start = Date.valueOf(LocalDate.of(year, 1, 1));
+        Date end = Date.valueOf(LocalDate.of(year + 1, 1, 1));
         try (Connection connection = openConnection();
-             PreparedStatement statement = prepare(connection, FIND_PAYMENTS_BY_YEAR, year);
+             PreparedStatement statement = prepare(connection, FIND_PAYMENTS_BY_YEAR, start, end);
              ResultSet resultSet = statement.executeQuery()) {
             while (resultSet.next()) {
                 Date paymentDate = resultSet.getDate("fecha_pago");
@@ -290,8 +296,10 @@ public class ReportDaoImpl implements ReportDao {
     public List<EventParticipationRecord> findEventParticipations(int year)
             throws SQLException {
         List<EventParticipationRecord> records = new ArrayList<>();
+        Date start = Date.valueOf(LocalDate.of(year, 1, 1));
+        Date end = Date.valueOf(LocalDate.of(year + 1, 1, 1));
         try (Connection connection = openConnection();
-             PreparedStatement statement = prepare(connection, FIND_EVENT_PARTICIPATIONS, year);
+             PreparedStatement statement = prepare(connection, FIND_EVENT_PARTICIPATIONS, start, end);
              ResultSet resultSet = statement.executeQuery()) {
             while (resultSet.next()) {
                 Date eventDate = resultSet.getDate("fecha_evento");

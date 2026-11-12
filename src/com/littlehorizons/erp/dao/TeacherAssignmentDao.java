@@ -4,6 +4,7 @@ import com.littlehorizons.erp.model.SubjectSummary;
 import com.littlehorizons.erp.model.TeacherAssignment;
 
 import java.sql.SQLException;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,6 +32,9 @@ public interface TeacherAssignmentDao {
     /** Checks the unique key (teacher + subject + year + section) before inserting. */
     boolean existsAssignment(int teacherId, int subjectId, int academicYear, String section)
             throws SQLException;
+
+    boolean hasScheduleConflict(int teacherId, int academicYear, String weekday,
+                                LocalTime startTime, LocalTime endTime) throws SQLException;
 
     /** Hard-deletes an assignment by primary key. */
     boolean delete(int id) throws SQLException;

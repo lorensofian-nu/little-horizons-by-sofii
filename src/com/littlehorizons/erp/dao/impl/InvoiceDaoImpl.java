@@ -3,6 +3,7 @@ package com.littlehorizons.erp.dao.impl;
 import com.littlehorizons.erp.dao.InvoiceDao;
 import com.littlehorizons.erp.model.Invoice;
 import com.littlehorizons.erp.util.DatabaseConnection;
+import com.littlehorizons.erp.util.DocumentSequenceUtil;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -18,7 +19,7 @@ public class InvoiceDaoImpl implements InvoiceDao {
 
     private static final String SELECT_BASE =
             "SELECT id_factura, numero_factura, id_pago, fecha_emision, cufe, "
-            + "nombre_archivo_pdf, ruta_archivo, fecha_creacion FROM facturas ";
+            + "nombre_archivo_txt, ruta_archivo, fecha_creacion FROM facturas ";
 
     public InvoiceDaoImpl() {
         // Connection is obtained per operation; no-op constructor kept for the no-arg chain.
@@ -27,7 +28,7 @@ public class InvoiceDaoImpl implements InvoiceDao {
     @Override
     public int save(Invoice invoice) throws SQLException {
         String sql = "INSERT INTO facturas (numero_factura, id_pago, fecha_emision, cufe, "
-                + "nombre_archivo_pdf, ruta_archivo) VALUES (?, ?, ?, ?, ?, ?)";
+                + "nombre_archivo_txt, ruta_archivo) VALUES (?, ?, ?, ?, ?, ?)";
         try (Connection connection = DatabaseConnection.getInstance().getConnection();
              PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             statement.setString(1, invoice.getInvoiceNumber());
@@ -99,19 +100,17 @@ public class InvoiceDaoImpl implements InvoiceDao {
 
     @Override
     public String nextInvoiceNumber() throws SQLException {
-        String sql = "SELECT MAX(numero_factura) FROM facturas WHERE numero_factura LIKE 'FAC-%'";
-        int nextSequence = 1;
-        try (Connection connection = DatabaseConnection.getInstance().getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet resultSet = statement.executeQuery()) {
-            if (resultSet.next() && resultSet.getString(1) != null) {
-                String lastNumber = resultSet.getString(1);
-                // Format: FAC-000123 -> sequence part after the dash.
-                String sequencePart = lastNumber.substring(lastNumber.indexOf('-') + 1);
-                nextSequence = Integer.parseInt(sequencePart) + 1;
+        try (Connection connection = DatabaseConnection.getInstance().getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                String next = DocumentSequenceUtil.next(connection, "FAC-", "invoice");
+                connection.commit();
+                return next;
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
             }
         }
-        return String.format("FAC-%06d", nextSequence);
     }
 
     private Invoice mapRow(ResultSet resultSet) throws SQLException {
@@ -123,7 +122,7 @@ public class InvoiceDaoImpl implements InvoiceDao {
                 resultSet.getInt("id_pago"),
                 issueDate == null ? null : issueDate.toLocalDate(),
                 resultSet.getString("cufe"),
-                resultSet.getString("nombre_archivo_pdf"),
+                resultSet.getString("nombre_archivo_txt"),
                 resultSet.getString("ruta_archivo"),
                 creation == null ? null : creation.toLocalDateTime());
     }

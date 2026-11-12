@@ -14,6 +14,9 @@ public interface ClubMembershipDao {
     /** Inserts a membership and returns its generated ID. */
     int save(ClubMembership membership) throws SQLException;
 
+    /** Inserts only when the club remains under capacity inside one transaction. */
+    int saveIfCapacityAvailable(ClubMembership membership) throws SQLException;
+
     ClubMembership findById(int membershipId) throws SQLException;
 
     /** Returns every membership of a club, active and withdrawn. */

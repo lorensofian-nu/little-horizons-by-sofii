@@ -14,6 +14,8 @@ import com.littlehorizons.erp.util.LoggerUtil;
 
 import java.sql.SQLException;
 import java.time.YearMonth;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,15 +25,14 @@ import java.util.Optional;
  * subject/year and delete, with uniqueness, existence and active-state
  * validations.
  *
- * <p>Known limitation (per project instruction): the DDL has no schedule
- * columns, so the day/time of each class cannot be stored. To help the
- * operator avoid basic conflicts, the teacher's existing assignments are
- * displayed in the console before confirming a new assignment; the operator
- * must verify visually that the time slots do not overlap.</p>
+ * <p>Assignments persist weekday and start/end times and reject overlapping
+ * slots for the same teacher through an application-level validation.</p>
  */
 public class TeacherAssignmentController {
 
     private static final List<String> SECTIONS = List.of("A", "B", "C");
+    private static final List<String> WEEKDAYS = List.of(
+            "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado");
 
     private final TeacherAssignmentDao assignmentDao;
     private final TeacherDao teacherDao;
@@ -67,9 +68,14 @@ public class TeacherAssignmentController {
             }
 
             String section = ConsoleUtils.readOption("  Section:", SECTIONS);
+            String weekday = ConsoleUtils.readOption("  Weekday:", WEEKDAYS);
+            LocalTime startTime = readTime("  Start time (HH:mm): ");
+            LocalTime endTime = readTime("  End time (HH:mm): ");
+            if (!startTime.isBefore(endTime)) {
+                ConsoleUtils.printError("End time must be after start time.");
+                return;
+            }
 
-            // Show current load so the operator can visually avoid time overlaps.
-            // (No schedule columns exist in the DDL; see the class javadoc.)
             showTeacherAssignments(teacher.get());
 
             if (assignmentDao.existsAssignment(teacher.get().getId(), subject.getId(),
@@ -77,6 +83,11 @@ public class TeacherAssignmentController {
                 ConsoleUtils.printError("That teacher is already assigned to subject '"
                         + subject.getName() + "' in year " + academicYear
                         + ", section " + section + ".");
+                return;
+            }
+            if (assignmentDao.hasScheduleConflict(teacher.get().getId(), academicYear,
+                    weekday, startTime, endTime)) {
+                ConsoleUtils.printError("The teacher already has another assignment in that time slot.");
                 return;
             }
 
@@ -88,7 +99,8 @@ public class TeacherAssignmentController {
             }
 
             TeacherAssignment assignment = TeacherAssignment.newAssignment(
-                    teacher.get().getId(), subject.getId(), academicYear, section);
+                    teacher.get().getId(), subject.getId(), academicYear, section,
+                    weekday, startTime, endTime);
             int id = assignmentDao.save(assignment);
             ConsoleUtils.printSuccess("Assignment registered with id " + id + ".");
         } catch (SQLException exception) {
@@ -281,8 +293,17 @@ public class TeacherAssignmentController {
                     System.out.println("    #" + assignment.getId() + " - "
                             + assignment.toDisplayString()));
         }
-        System.out.println("  NOTE: the system does not store class day/time (not supported "
-                + "by the data model), so verify visually that time slots do not overlap.");
         System.out.println();
+    }
+
+    private LocalTime readTime(String prompt) {
+        while (true) {
+            String raw = ConsoleUtils.readRequiredText(prompt, 5);
+            try {
+                return LocalTime.parse(raw.length() == 5 ? raw : raw + ":00");
+            } catch (DateTimeParseException exception) {
+                ConsoleUtils.printError("Use the HH:mm format, for example 07:30.");
+            }
+        }
     }
 }

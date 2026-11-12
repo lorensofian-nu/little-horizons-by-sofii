@@ -68,6 +68,82 @@ public class ClubMembershipDaoImpl implements ClubMembershipDao {
     }
 
     @Override
+    public int saveIfCapacityAvailable(ClubMembership membership) throws SQLException {
+        String clubSql = "SELECT capacidad_maxima FROM clubes WHERE id_club = ? AND esta_activo = TRUE FOR UPDATE";
+        String countSql = "SELECT COUNT(*) FROM membresias_club "
+                + "WHERE id_club = ? AND estado_membresia = 'Activa'";
+        String duplicateSql = "SELECT 1 FROM membresias_club WHERE id_estudiante = ? "
+                + "AND id_club = ? AND estado_membresia = 'Activa' LIMIT 1";
+        Connection connection = DatabaseConnection.getInstance().getConnection();
+        try {
+            connection.setAutoCommit(false);
+            int capacity;
+            try (PreparedStatement statement = connection.prepareStatement(clubSql)) {
+                statement.setInt(1, membership.getClubId());
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (!resultSet.next()) {
+                        connection.rollback();
+                        return -3;
+                    }
+                    capacity = resultSet.getInt(1);
+                    if (resultSet.wasNull()) {
+                        capacity = 30;
+                    }
+                }
+            }
+            try (PreparedStatement statement = connection.prepareStatement(duplicateSql)) {
+                statement.setInt(1, membership.getStudentId());
+                statement.setInt(2, membership.getClubId());
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (resultSet.next()) {
+                        connection.rollback();
+                        return -2;
+                    }
+                }
+            }
+            try (PreparedStatement statement = connection.prepareStatement(countSql)) {
+                statement.setInt(1, membership.getClubId());
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (resultSet.next() && resultSet.getInt(1) >= capacity) {
+                        connection.rollback();
+                        return -1;
+                    }
+                }
+            }
+            try (PreparedStatement statement = connection.prepareStatement(INSERT_SQL,
+                    Statement.RETURN_GENERATED_KEYS)) {
+                statement.setInt(1, membership.getStudentId());
+                statement.setInt(2, membership.getClubId());
+                statement.setDate(3, Date.valueOf(membership.getJoinDate()));
+                statement.setString(4, membership.getMembershipStatus().getLabel());
+                statement.executeUpdate();
+                try (ResultSet keys = statement.getGeneratedKeys()) {
+                    if (!keys.next()) {
+                        throw new SQLException("Membership insert did not return a generated key.");
+                    }
+                    membership.setMembershipId(keys.getInt(1));
+                }
+            }
+            connection.commit();
+            return membership.getMembershipId();
+        } catch (SQLException exception) {
+            try {
+                connection.rollback();
+            } catch (SQLException ignored) {
+                // Preserve the original exception.
+            }
+            throw exception;
+        } finally {
+            try {
+                connection.setAutoCommit(true);
+                connection.close();
+            } catch (SQLException ignored) {
+                // The transaction result is already known.
+            }
+        }
+    }
+
+    @Override
     public ClubMembership findById(int membershipId) throws SQLException {
         String sql = BASE_SELECT + " WHERE m.id_membresia = ?";
         try (Connection connection = DatabaseConnection.getInstance().getConnection();

@@ -28,24 +28,14 @@ public class TeacherDaoImpl implements TeacherDao {
                     + "primer_apellido, segundo_apellido, correo_electronico, telefono, "
                     + "especializacion, fecha_contratacion, estado, fecha_creacion, fecha_actualizacion";
 
-    private final Connection connection;
-
-    /** Builds the DAO with the shared database connection. */
-    public TeacherDaoImpl() {
-        try {
-            this.connection = DatabaseConnection.getInstance().getConnection();
-        } catch (SQLException exception) {
-            throw new IllegalStateException("Could not obtain the database connection.", exception);
-        }
-    }
-
     @Override
     public int save(Teacher teacher) throws SQLException {
         String sql = "INSERT INTO profesores (tipo_documento, numero_documento, primer_nombre, "
                 + "segundo_nombre, primer_apellido, segundo_apellido, correo_electronico, telefono, "
                 + "especializacion, fecha_contratacion, estado) "
                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        try (PreparedStatement statement = connection.prepareStatement(sql,
+        try (Connection connection = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql,
                 Statement.RETURN_GENERATED_KEYS)) {
             statement.setString(1, teacher.getDocumentType().getValue());
             statement.setString(2, teacher.getDocumentNumber());
@@ -66,7 +56,8 @@ public class TeacherDaoImpl implements TeacherDao {
     @Override
     public Optional<Teacher> findById(int id) throws SQLException {
         String sql = "SELECT " + SELECT_COLUMNS + " FROM profesores WHERE id_profesor = ?";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (Connection connection = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, id);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? Optional.of(mapRow(resultSet)) : Optional.empty();
@@ -94,7 +85,8 @@ public class TeacherDaoImpl implements TeacherDao {
                 + "primer_nombre = ?, segundo_nombre = ?, primer_apellido = ?, segundo_apellido = ?, "
                 + "correo_electronico = ?, telefono = ?, especializacion = ?, "
                 + "fecha_contratacion = ?, estado = ? WHERE id_profesor = ?";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (Connection connection = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, teacher.getDocumentType().getValue());
             statement.setString(2, teacher.getDocumentNumber());
             statement.setString(3, teacher.getFirstName());
@@ -114,7 +106,8 @@ public class TeacherDaoImpl implements TeacherDao {
     @Override
     public boolean updateStatus(int teacherId, TeacherStatus status) throws SQLException {
         String sql = "UPDATE profesores SET estado = ? WHERE id_profesor = ?";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (Connection connection = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, status.getValue());
             statement.setInt(2, teacherId);
             return statement.executeUpdate() > 0;
@@ -124,7 +117,8 @@ public class TeacherDaoImpl implements TeacherDao {
     @Override
     public boolean delete(int id) throws SQLException {
         String sql = "DELETE FROM profesores WHERE id_profesor = ?";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (Connection connection = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, id);
             return statement.executeUpdate() > 0;
         }
@@ -153,7 +147,8 @@ public class TeacherDaoImpl implements TeacherDao {
 
     private List<Teacher> queryList(String sql, StatementBinder binder) throws SQLException {
         List<Teacher> teachers = new ArrayList<>();
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (Connection connection = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
             binder.bind(statement);
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
@@ -165,7 +160,8 @@ public class TeacherDaoImpl implements TeacherDao {
     }
 
     private Optional<Teacher> querySingle(String sql, String parameter) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (Connection connection = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, parameter);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? Optional.of(mapRow(resultSet)) : Optional.empty();
