@@ -6,6 +6,8 @@ import com.littlehorizons.erp.model.Gender;
 import com.littlehorizons.erp.model.Student;
 import com.littlehorizons.erp.model.StudentStatus;
 import com.littlehorizons.erp.model.StudentSummary;
+import com.littlehorizons.erp.model.PageRequest;
+import com.littlehorizons.erp.model.PageResult;
 import com.littlehorizons.erp.util.DatabaseConnection;
 
 import java.sql.Connection;
@@ -112,6 +114,59 @@ public class StudentDaoImpl implements StudentDao {
             }
         }
         return students;
+    }
+
+    @Override
+    public PageResult<Student> findPage(PageRequest request) throws SQLException {
+        String sql = SQL_SELECT_BASE + "ORDER BY primer_apellido, primer_nombre, id_estudiante "
+                + "LIMIT ? OFFSET ?";
+        return readPage(sql, request);
+    }
+
+    @Override
+    public PageResult<Student> searchPage(String term, PageRequest request) throws SQLException {
+        String sql = SQL_SELECT_BASE
+                + "WHERE CONCAT(primer_nombre, ' ', IFNULL(segundo_nombre, ''), ' ', primer_apellido, ' ', "
+                + "IFNULL(segundo_apellido, '')) LIKE ? OR numero_documento LIKE ? "
+                + "ORDER BY primer_apellido, primer_nombre, id_estudiante LIMIT ? OFFSET ?";
+        String pattern = "%" + term + "%";
+        List<Student> students = new ArrayList<>();
+        try (Connection connection = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, pattern);
+            statement.setString(2, pattern);
+            statement.setInt(3, request.pageSize() + 1);
+            statement.setInt(4, request.offset());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    students.add(mapRow(resultSet));
+                }
+            }
+        }
+        return page(students, request);
+    }
+
+    private PageResult<Student> readPage(String sql, PageRequest request) throws SQLException {
+        List<Student> students = new ArrayList<>();
+        try (Connection connection = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, request.pageSize() + 1);
+            statement.setInt(2, request.offset());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    students.add(mapRow(resultSet));
+                }
+            }
+        }
+        return page(students, request);
+    }
+
+    private PageResult<Student> page(List<Student> students, PageRequest request) {
+        boolean hasNext = students.size() > request.pageSize();
+        if (hasNext) {
+            students.remove(students.size() - 1);
+        }
+        return new PageResult<>(students, request, hasNext);
     }
 
     @Override

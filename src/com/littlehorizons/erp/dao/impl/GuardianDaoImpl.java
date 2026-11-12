@@ -3,6 +3,8 @@ package com.littlehorizons.erp.dao.impl;
 import com.littlehorizons.erp.dao.GuardianDao;
 import com.littlehorizons.erp.model.Guardian;
 import com.littlehorizons.erp.model.GuardianDocumentType;
+import com.littlehorizons.erp.model.PageRequest;
+import com.littlehorizons.erp.model.PageResult;
 import com.littlehorizons.erp.util.DatabaseConnection;
 
 import java.sql.Connection;
@@ -106,6 +108,59 @@ public class GuardianDaoImpl implements GuardianDao {
             }
         }
         return guardians;
+    }
+
+    @Override
+    public PageResult<Guardian> findPage(PageRequest request) throws SQLException {
+        String sql = SQL_SELECT_BASE + "ORDER BY primer_apellido, primer_nombre, id_acudiente "
+                + "LIMIT ? OFFSET ?";
+        return readPage(sql, request);
+    }
+
+    @Override
+    public PageResult<Guardian> searchPage(String term, PageRequest request) throws SQLException {
+        String sql = SQL_SELECT_BASE
+                + "WHERE CONCAT(primer_nombre, ' ', IFNULL(segundo_nombre, ''), ' ', primer_apellido, ' ', "
+                + "IFNULL(segundo_apellido, '')) LIKE ? OR numero_documento LIKE ? "
+                + "ORDER BY primer_apellido, primer_nombre, id_acudiente LIMIT ? OFFSET ?";
+        String pattern = "%" + term + "%";
+        List<Guardian> guardians = new ArrayList<>();
+        try (Connection connection = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, pattern);
+            statement.setString(2, pattern);
+            statement.setInt(3, request.pageSize() + 1);
+            statement.setInt(4, request.offset());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    guardians.add(mapRow(resultSet));
+                }
+            }
+        }
+        return page(guardians, request);
+    }
+
+    private PageResult<Guardian> readPage(String sql, PageRequest request) throws SQLException {
+        List<Guardian> guardians = new ArrayList<>();
+        try (Connection connection = DatabaseConnection.getInstance().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, request.pageSize() + 1);
+            statement.setInt(2, request.offset());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    guardians.add(mapRow(resultSet));
+                }
+            }
+        }
+        return page(guardians, request);
+    }
+
+    private PageResult<Guardian> page(List<Guardian> guardians, PageRequest request) {
+        boolean hasNext = guardians.size() > request.pageSize();
+        if (hasNext) {
+            guardians.remove(guardians.size() - 1);
+        }
+        return new PageResult<>(guardians, request, hasNext);
     }
 
     @Override

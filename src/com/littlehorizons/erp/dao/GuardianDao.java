@@ -1,6 +1,8 @@
 package com.littlehorizons.erp.dao;
 
 import com.littlehorizons.erp.model.Guardian;
+import com.littlehorizons.erp.model.PageRequest;
+import com.littlehorizons.erp.model.PageResult;
 
 import java.sql.SQLException;
 import java.util.List;
@@ -21,6 +23,10 @@ public interface GuardianDao {
 
     /** Search by full name fragments or document number. */
     List<Guardian> searchByNameOrDocument(String term) throws SQLException;
+
+    PageResult<Guardian> findPage(PageRequest request) throws SQLException;
+
+    PageResult<Guardian> searchPage(String term, PageRequest request) throws SQLException;
 
     boolean update(Guardian guardian) throws SQLException;
 

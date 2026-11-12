@@ -12,21 +12,23 @@ import java.util.Properties;
  *
  * <p>Connection settings are read once from the {@code db.properties} file located
  * at the project root. Missing required settings fail fast with a clear error;
- * no default credentials are ever assumed. Callers obtain a fresh {@link Connection}
- * on each request and are expected to close it using try-with-resources.</p>
+ * no default credentials are ever assumed. Callers obtain a bounded pooled
+ * {@link Connection} on each request and must return it using try-with-resources.</p>
  */
 public final class DatabaseConnection {
 
     private static final String CONFIG_FILE = "db.properties";
     private static final String JDBC_URL_TEMPLATE =
-            "jdbc:mysql://%s:%s/%s?useSSL=false&allowPublicKeyRetrieval=true"
-            + "&serverTimezone=America/Bogota&characterEncoding=UTF-8";
+            "jdbc:mysql://%s:%s/%s?useSSL=%s&verifyServerCertificate=%s"
+            + "&allowPublicKeyRetrieval=%s&serverTimezone=America/Bogota"
+            + "&characterEncoding=UTF-8";
 
     private static volatile DatabaseConnection instance;
 
     private final String jdbcUrl;
     private final String user;
     private final String password;
+    private final ConnectionPool connectionPool;
 
     private DatabaseConnection() {
         Properties properties = loadProperties();
@@ -34,9 +36,16 @@ public final class DatabaseConnection {
         String port = requireProperty(properties, "db.port");
         String database = requireProperty(properties, "db.name");
         this.user = requireProperty(properties, "db.user");
-        // The password may legitimately be empty for a local development MySQL user.
-        this.password = properties.getProperty("db.password", "");
-        this.jdbcUrl = String.format(JDBC_URL_TEMPLATE, host, port, database);
+        this.password = requireProperty(properties, "db.password");
+        boolean ssl = booleanProperty(properties, "db.ssl", true);
+        boolean verifyCertificate = booleanProperty(properties, "db.verifyServerCertificate", ssl);
+        boolean allowPublicKeyRetrieval = booleanProperty(
+                properties, "db.allowPublicKeyRetrieval", false);
+        this.jdbcUrl = String.format(JDBC_URL_TEMPLATE, host, port, database,
+                ssl, verifyCertificate, allowPublicKeyRetrieval);
+        int poolSize = integerProperty(properties, "db.poolSize", 10, 1, 50);
+        this.connectionPool = new ConnectionPool(
+                () -> DriverManager.getConnection(jdbcUrl, user, password), poolSize);
     }
 
     /**
@@ -54,6 +63,29 @@ public final class DatabaseConnection {
         return value;
     }
 
+    private boolean booleanProperty(Properties properties, String key, boolean defaultValue) {
+        String value = properties.getProperty(key);
+        return value == null ? defaultValue : Boolean.parseBoolean(value.trim());
+    }
+
+    private int integerProperty(Properties properties, String key, int defaultValue,
+                                int min, int max) {
+        String value = properties.getProperty(key);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            if (parsed >= min && parsed <= max) {
+                return parsed;
+            }
+        } catch (NumberFormatException ignored) {
+            // Fall through to the configuration error below.
+        }
+        throw new IllegalStateException(
+                "The '" + key + "' setting must be between " + min + " and " + max + ".");
+    }
+
     /** Returns the singleton instance using double-checked locking. */
     public static DatabaseConnection getInstance() {
         if (instance == null) {
@@ -68,7 +100,12 @@ public final class DatabaseConnection {
 
     /** Opens a new connection to the database. The caller must close it. */
     public Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(jdbcUrl, user, password);
+        return connectionPool.borrow();
+    }
+
+    /** Closes idle pooled connections during orderly application shutdown. */
+    public void closePool() {
+        connectionPool.closeAll();
     }
 
     /** Utility method used by Main to fail fast with a clear message. */

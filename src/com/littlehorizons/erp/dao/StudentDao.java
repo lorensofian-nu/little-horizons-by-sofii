@@ -2,6 +2,8 @@ package com.littlehorizons.erp.dao;
 
 import com.littlehorizons.erp.model.Student;
 import com.littlehorizons.erp.model.StudentSummary;
+import com.littlehorizons.erp.model.PageRequest;
+import com.littlehorizons.erp.model.PageResult;
 
 import java.sql.SQLException;
 import java.util.List;
@@ -22,6 +24,10 @@ public interface StudentDao {
 
     /** Search by full name fragments or document number. */
     List<Student> searchByNameOrDocument(String term) throws SQLException;
+
+    PageResult<Student> findPage(PageRequest request) throws SQLException;
+
+    PageResult<Student> searchPage(String term, PageRequest request) throws SQLException;
 
     boolean update(Student student) throws SQLException;
 
