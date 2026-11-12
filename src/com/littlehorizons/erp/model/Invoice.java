@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 /**
  * An electronic invoice (stored as a formatted .txt file), mapped from the
  * {@code facturas} table. {@code fileName} / {@code filePath} are persisted in
- * the legacy columns {@code nombre_archivo_pdf} / {@code ruta_archivo}.
+ * the columns {@code nombre_archivo_txt} / {@code ruta_archivo}.
  */
 public class Invoice {
 

@@ -4,6 +4,7 @@ import com.littlehorizons.erp.model.GuardianSummary;
 import com.littlehorizons.erp.model.Invoice;
 import com.littlehorizons.erp.model.Payment;
 import com.littlehorizons.erp.model.PaymentConcept;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.InvoiceGenerator;
 import com.littlehorizons.erp.util.LoggerUtil;
@@ -11,7 +12,6 @@ import com.littlehorizons.erp.util.LoggerUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.List;
 
@@ -19,9 +19,15 @@ import java.util.List;
 public class InvoiceController {
 
     private final PaymentController paymentController;
+    private final UserRole userRole;
 
     public InvoiceController() {
-        this.paymentController = new PaymentController();
+        this(UserRole.ADMINISTRATOR);
+    }
+
+    public InvoiceController(UserRole userRole) {
+        this.userRole = userRole;
+        this.paymentController = new PaymentController(userRole);
     }
 
     /** Lists every invoice with its file status. */
@@ -41,7 +47,7 @@ public class InvoiceController {
                     invoice.getPaymentId(),
                     invoice.getIssueDate(),
                     invoice.getFileName(),
-                    Files.exists(Paths.get(invoice.getFilePath())) ? "Yes" : "No"));
+                    invoiceFileExists(invoice) ? "Yes" : "No"));
         } catch (SQLException exception) {
             ConsoleUtils.printError("Database error while listing invoices.");
             LoggerUtil.logError("InvoiceController.listInvoices", exception);
@@ -90,15 +96,13 @@ public class InvoiceController {
                     : paymentController.getPaymentDao().findGuardianById(payment.getGuardianId());
 
             // Rebuild the file with the original invoice number and issue date.
-            String fileName = "factura_" + invoice.getInvoiceNumber().substring("FAC-".length()) + ".txt";
-            Path folder = Paths.get(com.littlehorizons.erp.util.AppConstants.INVOICE_FOLDER);
-            Files.createDirectories(folder);
-            Path filePath = folder.resolve(fileName).toAbsolutePath();
+            Path filePath = InvoiceGenerator.resolveInvoicePath(invoice);
 
             String cufe = InvoiceGenerator.computeCufe(invoice.getInvoiceNumber(), invoice.getIssueDate());
             String content = InvoiceGenerator.rebuildContent(payment, concept, guardian,
-                    invoice.getInvoiceNumber(), invoice.getIssueDate(), cufe);
-            Files.writeString(filePath, content, java.nio.charset.StandardCharsets.UTF_8);
+                    invoice.getInvoiceNumber(), invoice.getIssueDate(), cufe,
+                    userRole.canViewSensitiveClientData());
+            InvoiceGenerator.writePrivateText(filePath, content);
 
             ConsoleUtils.printSuccess("Invoice file regenerated: " + filePath);
         } catch (SQLException exception) {
@@ -128,6 +132,14 @@ public class InvoiceController {
             return null;
         }
         return invoice;
+    }
+
+    private boolean invoiceFileExists(Invoice invoice) {
+        try {
+            return Files.exists(InvoiceGenerator.resolveInvoicePath(invoice));
+        } catch (IOException exception) {
+            return false;
+        }
     }
 
     /** Minimal bridge so this controller does not need its own DAO instance wiring. */

@@ -7,8 +7,11 @@ import com.littlehorizons.erp.model.Guardian;
 import com.littlehorizons.erp.model.GuardianDocumentType;
 import com.littlehorizons.erp.model.StudentGuardianLink;
 import com.littlehorizons.erp.model.StudentSummary;
+import com.littlehorizons.erp.model.PageRequest;
+import com.littlehorizons.erp.model.PageResult;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
+import com.littlehorizons.erp.util.PrivacyUtils;
 
 import java.sql.SQLException;
 import java.util.Comparator;
@@ -41,13 +44,14 @@ public class GuardianController {
                 return;
             }
             if (guardianDao.findByDocumentNumber(guardian.getDocumentNumber()) != null) {
-                ConsoleUtils.printError("A guardian with document " + guardian.getDocumentNumber()
+                ConsoleUtils.printError("A guardian with document "
+                        + PrivacyUtils.maskIdentifier(guardian.getDocumentNumber())
                         + " already exists.");
                 return;
             }
             int id = guardianDao.save(guardian);
             ConsoleUtils.printSuccess("Guardian registered with id " + id + ": " + guardian.getFullName());
-            LoggerUtil.logInfo("Guardian created: id=" + id + ", document=" + guardian.getDocumentNumber());
+            LoggerUtil.logInfo("Guardian created: id=" + id);
         } catch (SQLException exception) {
             ConsoleUtils.printError("Could not register the guardian.");
             LoggerUtil.logError("GuardianController.createGuardian", exception);
@@ -59,9 +63,14 @@ public class GuardianController {
         ConsoleUtils.printHeader("GUARDIAN LIST");
         try {
             String term = ConsoleUtils.readLine("Search by name or document (empty = show all): ");
-            List<Guardian> guardians = term.isBlank()
-                    ? guardianDao.findAll()
-                    : guardianDao.searchByNameOrDocument(term);
+            int pageNumber = ConsoleUtils.readInt("Page number (1 = first): ",
+                    1, 1_000_000, 1);
+            int pageSize = ConsoleUtils.readInt("Page size (1-100): ", 1, 100, 20);
+            PageRequest pageRequest = new PageRequest(pageNumber, pageSize);
+            PageResult<Guardian> page = term.isBlank()
+                    ? guardianDao.findPage(pageRequest)
+                    : guardianDao.searchPage(term, pageRequest);
+            List<Guardian> guardians = page.items();
             if (guardians.isEmpty()) {
                 ConsoleUtils.printError("No guardians found.");
                 return;
@@ -70,7 +79,8 @@ public class GuardianController {
                     .sorted(Comparator.comparing(Guardian::getLastName)
                             .thenComparing(Guardian::getFirstName))
                     .forEach(guardian -> System.out.println("  " + guardian));
-            System.out.println("  Total: " + guardians.size() + " guardian(s).");
+            System.out.println("  Page " + pageNumber + " (" + guardians.size()
+                    + " guardian(s))" + (page.hasNext() ? "; more results available." : "."));
         } catch (SQLException exception) {
             ConsoleUtils.printError("Could not retrieve the guardian list.");
             LoggerUtil.logError("GuardianController.listGuardians", exception);
@@ -92,7 +102,7 @@ public class GuardianController {
             }
             Guardian duplicate = guardianDao.findByDocumentNumber(updated.getDocumentNumber());
             if (duplicate != null && duplicate.getId() != current.getId()) {
-                ConsoleUtils.printError("Document " + updated.getDocumentNumber()
+                ConsoleUtils.printError("Document " + PrivacyUtils.maskIdentifier(updated.getDocumentNumber())
                         + " already belongs to another guardian.");
                 return;
             }
@@ -106,8 +116,8 @@ public class GuardianController {
     }
 
     /**
-     * Deletes a guardian. The CASCADE removes the student links, so the
-     * operation requires an explicit confirmation.
+     * Deletes a guardian. Referential restrictions prevent deleting a guardian
+     * while student links still exist, preserving historical relationships.
      */
     public void deleteGuardian() {
         ConsoleUtils.printHeader("DELETE GUARDIAN");
@@ -337,7 +347,7 @@ public class GuardianController {
         String primaryPhone = ConsoleUtils.readRequiredText("Primary phone: ");
         String secondaryPhone = ConsoleUtils.readOptionalText("Secondary phone (empty = none): ",
                 current == null ? null : current.getSecondaryPhone());
-        String email = ConsoleUtils.readOptionalText("Email (empty = none): ",
+        String email = ConsoleUtils.readOptionalEmail("Email (empty = none): ",
                 current == null ? null : current.getEmail());
         String address = ConsoleUtils.readOptionalText("Address (empty = none): ",
                 current == null ? null : current.getAddress());

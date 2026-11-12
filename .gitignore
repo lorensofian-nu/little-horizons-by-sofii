@@ -6,6 +6,9 @@ out/
 error_log.txt
 invoices/
 
+# Local secrets and machine-specific configuration
+db.properties
+
 # IDE files
 .idea/
 .vscode/

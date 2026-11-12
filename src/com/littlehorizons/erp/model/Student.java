@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 
+import com.littlehorizons.erp.util.PrivacyUtils;
+
 /**
  * Student entity mapped from the {@code estudiantes} table.
  */
@@ -223,7 +225,7 @@ public class Student {
     @Override
     public String toString() {
         return String.format("ID %-4d | %-11s %-15s | %-35s | %s",
-                id, documentType, documentNumber, getFullName(),
+                id, documentType, PrivacyUtils.maskIdentifier(documentNumber), getFullName(),
                 status == null ? "-" : status);
     }
 }

@@ -3,6 +3,8 @@ package com.littlehorizons.erp;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.DatabaseConnection;
 import com.littlehorizons.erp.util.LoggerUtil;
+import com.littlehorizons.erp.model.AuthenticatedUser;
+import com.littlehorizons.erp.service.AuthenticationService;
 import com.littlehorizons.erp.view.AcademicView;
 import com.littlehorizons.erp.view.ExtracurricularView;
 import com.littlehorizons.erp.view.FinancialView;
@@ -31,6 +33,8 @@ public final class Main {
         DatabaseConnection database;
         try {
             database = DatabaseConnection.getInstance();
+            Runtime.getRuntime().addShutdownHook(new Thread(database::closePool,
+                    "database-pool-shutdown"));
         } catch (IllegalStateException exception) {
             ConsoleUtils.printError("Configuration error: " + exception.getMessage());
             LoggerUtil.logError("Application started with invalid database configuration",
@@ -47,18 +51,45 @@ public final class Main {
             return;
         }
 
+        AuthenticationService authenticationService = new AuthenticationService();
+        try {
+            if (authenticationService.bootstrapInitialAdministrator()) {
+                ConsoleUtils.printSuccess("Initial administrator created from environment configuration.");
+            }
+            if (!authenticationService.hasUsers()) {
+                ConsoleUtils.printError("No application users exist. Set ERP_INITIAL_ADMIN_PASSWORD "
+                        + "to a private value of at least 12 characters and restart.");
+                return;
+            }
+        } catch (java.sql.SQLException exception) {
+            ConsoleUtils.printError("Could not initialize application users.");
+            LoggerUtil.logError("Main.initializeUsers", exception);
+            return;
+        }
+        AuthenticatedUser user = authenticate(authenticationService);
+        if (user == null) {
+            return;
+        }
+        if (user.mustChangePassword() && !changeInitialPassword(authenticationService, user)) {
+            return;
+        }
+
         StudentView studentView = new StudentView();
         AcademicView academicView = new AcademicView();
         TeacherView teacherView = new TeacherView();
         ExtracurricularView extracurricularView = new ExtracurricularView();
-        FinancialView financialView = new FinancialView();
+        FinancialView financialView = new FinancialView(user.getRole());
         ResourceView resourceView = new ResourceView();
-        ReportsView reportsView = new ReportsView();
+        ReportsView reportsView = new ReportsView(user.getRole());
 
         boolean running = true;
         while (running) {
-            printMainMenu();
+            printMainMenu(user);
             int option = ConsoleUtils.readMenuOption("Seleccione una opción: ", EXIT_OPTION);
+            if (option != EXIT_OPTION && !user.getRole().canAccess(option)) {
+                ConsoleUtils.printError("You are not authorized to access that module.");
+                continue;
+            }
             switch (option) {
                 case 1 -> studentView.show();
                 case 2 -> academicView.show();
@@ -88,20 +119,67 @@ public final class Main {
         System.out.println("╚══════════════════════════════════════════════════╝");
     }
 
-    private static void printMainMenu() {
+    private static AuthenticatedUser authenticate(AuthenticationService authenticationService) {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            String username = ConsoleUtils.readRequiredText("Username: ", 80);
+            char[] password = ConsoleUtils.readSecret("Password: ");
+            try {
+                AuthenticatedUser user = authenticationService.authenticate(username, password);
+                java.util.Arrays.fill(password, '\0');
+                if (user != null) {
+                    System.out.println("  Authenticated as " + user.getUsername()
+                            + " (" + user.getRole().getDatabaseValue() + ").");
+                    return user;
+                }
+            } catch (java.sql.SQLException exception) {
+                java.util.Arrays.fill(password, '\0');
+                ConsoleUtils.printError("Could not authenticate against the database.");
+                LoggerUtil.logError("Main.authenticate", exception);
+                return null;
+            }
+            ConsoleUtils.printError("Invalid credentials. Attempt " + attempt + " of 3.");
+        }
+        ConsoleUtils.printError("Maximum login attempts exceeded.");
+        return null;
+    }
+
+    private static boolean changeInitialPassword(AuthenticationService authenticationService,
+                                                 AuthenticatedUser user) {
+        System.out.println("  You must change the initial password before continuing.");
+        char[] first = ConsoleUtils.readSecret("New password (minimum 12 characters): ");
+        char[] second = ConsoleUtils.readSecret("Repeat new password: ");
+        try {
+            if (first.length < 12 || !java.util.Arrays.equals(first, second)) {
+                ConsoleUtils.printError("Passwords must match and contain at least 12 characters.");
+                return false;
+            }
+            authenticationService.changePassword(user.getUsername(), first);
+            ConsoleUtils.printSuccess("Password changed successfully.");
+            return true;
+        } catch (java.sql.SQLException exception) {
+            ConsoleUtils.printError("Could not change the initial password.");
+            LoggerUtil.logError("Main.changeInitialPassword", exception);
+            return false;
+        } finally {
+            java.util.Arrays.fill(first, '\0');
+            java.util.Arrays.fill(second, '\0');
+        }
+    }
+
+    private static void printMainMenu(AuthenticatedUser user) {
         System.out.println();
         System.out.println("╔══════════════════════════════════════════════════╗");
         System.out.println("║   ERP Colegio Little Horizons                    ║");
         System.out.println("║   Sistema de Gestión Educativa                   ║");
         System.out.println("╚══════════════════════════════════════════════════╝");
         System.out.println();
-        System.out.println("  1. Gestión de Estudiantes");
-        System.out.println("  2. Gestión Académica");
-        System.out.println("  3. Gestión de Profesores");
-        System.out.println("  4. Actividades Extracurriculares");
-        System.out.println("  5. Gestión Financiera");
-        System.out.println("  6. Gestión de Recursos");
-        System.out.println("  7. Reportes y Estadísticas");
+        if (user.getRole().canAccess(1)) System.out.println("  1. Gestión de Estudiantes");
+        if (user.getRole().canAccess(2)) System.out.println("  2. Gestión Académica");
+        if (user.getRole().canAccess(3)) System.out.println("  3. Gestión de Profesores");
+        if (user.getRole().canAccess(4)) System.out.println("  4. Actividades Extracurriculares");
+        if (user.getRole().canAccess(5)) System.out.println("  5. Gestión Financiera");
+        if (user.getRole().canAccess(6)) System.out.println("  6. Gestión de Recursos");
+        if (user.getRole().canAccess(7)) System.out.println("  7. Reportes y Estadísticas");
         System.out.println("  8. Salir");
         System.out.println();
     }

@@ -15,6 +15,7 @@ import com.littlehorizons.erp.model.LoanOverdueReport;
 import com.littlehorizons.erp.model.ReportRow;
 import com.littlehorizons.erp.model.ResourcesReportResult;
 import com.littlehorizons.erp.model.StudentAverageReport;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.AppConstants;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
@@ -35,9 +36,15 @@ import java.util.stream.Collectors;
 public class ReportsView {
 
     private final ReportController reportController;
+    private final UserRole userRole;
 
     /** Creates the view with its own controller and DAO implementation. */
     public ReportsView() {
+        this(UserRole.ADMINISTRATOR);
+    }
+
+    public ReportsView(UserRole userRole) {
+        this.userRole = userRole;
         this.reportController = new ReportController(new ReportDaoImpl());
     }
 
@@ -185,6 +192,10 @@ public class ReportsView {
     // ---------- 4. Financial report ----------
 
     private void showFinancialReport() {
+        if (!userRole.canViewFinancialData()) {
+            ConsoleUtils.printError("You are not authorized to view financial reports.");
+            return;
+        }
         ConsoleUtils.printHeader("FINANCIAL REPORT");
         Integer year = readAcademicYear();
         if (year == null) {

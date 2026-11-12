@@ -7,6 +7,7 @@ import com.littlehorizons.erp.model.TeacherDocumentType;
 import com.littlehorizons.erp.model.TeacherStatus;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
+import com.littlehorizons.erp.util.PrivacyUtils;
 
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -107,7 +108,8 @@ public class TeacherController {
             if (teacher.isPresent()) {
                 printTeacherDetail(teacher.get());
             } else {
-                ConsoleUtils.printError("No teacher found with document " + document + ".");
+                ConsoleUtils.printError("No teacher found with document "
+                        + PrivacyUtils.maskIdentifier(document) + ".");
             }
         } catch (SQLException exception) {
             handleSqlError("findTeacherByDocument", exception);
@@ -257,7 +259,7 @@ public class TeacherController {
                         nullToEmpty(teacher.getSecondLastName()))
                 : ConsoleUtils.readOptionalText("  Second last name (optional): ", null));
 
-        String email = ConsoleUtils.readOptionalText(
+        String email = ConsoleUtils.readOptionalEmail(
                 "  Email (empty = keep current): ", nullToEmpty(teacher.getEmail()));
         teacher.setEmail(email.isEmpty() ? ConsoleUtils.readRequiredText("  Email: ") : email);
 
@@ -292,7 +294,7 @@ public class TeacherController {
     private boolean isDocumentAvailable(String documentNumber, int currentId) throws SQLException {
         Optional<Teacher> found = teacherDao.findByDocument(documentNumber);
         if (found.isPresent() && found.get().getId() != currentId) {
-            ConsoleUtils.printError("Document number " + documentNumber
+            ConsoleUtils.printError("Document number " + PrivacyUtils.maskIdentifier(documentNumber)
                     + " already belongs to teacher id " + found.get().getId() + ".");
             return false;
         }
@@ -302,8 +304,8 @@ public class TeacherController {
     private boolean isEmailAvailable(String email, int currentId) throws SQLException {
         Optional<Teacher> found = teacherDao.findByEmail(email);
         if (found.isPresent() && found.get().getId() != currentId) {
-            ConsoleUtils.printError("Email " + email
-                    + " already belongs to teacher id " + found.get().getId() + ".");
+            ConsoleUtils.printError("That email already belongs to teacher id "
+                    + found.get().getId() + ".");
             return false;
         }
         return true;
@@ -316,19 +318,19 @@ public class TeacherController {
     private String formatListLine(Teacher teacher) {
         return String.format("#%-5d %-16s %-35s %-30s %-9s %s",
                 teacher.getId(),
-                teacher.getIdentityLabel(),
+                PrivacyUtils.maskIdentifier(teacher.getIdentityLabel()),
                 teacher.getFullName(),
-                teacher.getEmail() == null ? "-" : teacher.getEmail(),
+                teacher.getEmail() == null ? "-" : maskEmail(teacher.getEmail()),
                 teacher.getStatus() == null ? "-" : teacher.getStatus().getValue(),
                 teacher.getSpecialization() == null ? "-" : teacher.getSpecialization());
     }
 
     private void printTeacherDetail(Teacher teacher) {
         System.out.println("  Id:              " + teacher.getId());
-        System.out.println("  Document:        " + teacher.getIdentityLabel());
+        System.out.println("  Document:        " + PrivacyUtils.maskIdentifier(teacher.getIdentityLabel()));
         System.out.println("  Full name:       " + teacher.getFullName());
-        System.out.println("  Email:           " + nullToEmpty(teacher.getEmail()));
-        System.out.println("  Phone:           " + nullToEmpty(teacher.getPhone()));
+        System.out.println("  Email:           " + maskEmail(teacher.getEmail()));
+        System.out.println("  Phone:           " + PrivacyUtils.maskIdentifier(teacher.getPhone()));
         System.out.println("  Specialization:  " + nullToEmpty(teacher.getSpecialization()));
         System.out.println("  Hire date:       " + teacher.getHireDate());
         System.out.println("  Status:          "
@@ -339,5 +341,16 @@ public class TeacherController {
     private void handleSqlError(String context, SQLException exception) {
         ConsoleUtils.printError("A database error occurred. Check the log file for details.");
         LoggerUtil.logError("TeacherController." + context, exception);
+    }
+
+    private String maskEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return "-";
+        }
+        int at = email.indexOf('@');
+        if (at <= 1) {
+            return "***";
+        }
+        return email.charAt(0) + "***" + email.substring(at);
     }
 }

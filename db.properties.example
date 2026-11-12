@@ -1,0 +1,13 @@
+# Copy this file to db.properties and configure local credentials.
+db.host=localhost
+db.port=3306
+db.name=erp_little_horizons
+db.user=erp_app
+db.password=CHANGE_ME
+
+# Secure defaults. Set db.ssl=false only on an isolated local MySQL instance
+# that does not provide TLS certificates.
+db.ssl=true
+db.verifyServerCertificate=true
+db.allowPublicKeyRetrieval=false
+db.poolSize=10

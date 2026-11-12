@@ -10,6 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermission;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.NumberFormat;
@@ -54,18 +57,18 @@ public final class InvoiceGenerator {
     }
 
     /**
-     * Generates the invoice file and returns the populated {@link Invoice}
-     * (id = 0; the caller persists it and assigns the generated id).
+     * Builds the {@link Invoice} record (number, CUFE, file name and target
+     * path) without touching the database or the file system. The caller
+     * persists it in the same transaction as its payment and then writes the
+     * file with {@link #writeInvoiceFile}.
      *
-     * @param payment       confirmed payment (must already have its generated id)
+     * @param payment       confirmed payment (its generated id is optional here)
      * @param concept       payment concept sold in this invoice
      * @param client        guardian used as invoice client (may be null)
      * @param invoiceNumber sequential number, e.g. {@code FAC-000001}
-     * @throws IOException when the file cannot be created or written
      */
-    public static Invoice generateInvoice(Payment payment, PaymentConcept concept,
-                                          GuardianSummary client, String invoiceNumber)
-            throws IOException {
+    public static Invoice buildInvoice(Payment payment, PaymentConcept concept,
+                                       GuardianSummary client, String invoiceNumber) {
 
         LocalDate issueDate = payment.getPaymentDate() != null ? payment.getPaymentDate() : LocalDate.now();
         String cufe = computeCufe(invoiceNumber, issueDate);
@@ -73,14 +76,86 @@ public final class InvoiceGenerator {
         String fileName = "factura_" + invoiceNumber.substring("FAC-".length()) + ".txt";
 
         Path folder = Paths.get(AppConstants.INVOICE_FOLDER);
-        Files.createDirectories(folder);
         Path filePath = folder.resolve(fileName).toAbsolutePath();
-
-        String content = buildContent(payment, concept, client, invoiceNumber, issueDate, cufe);
-        Files.writeString(filePath, content, StandardCharsets.UTF_8);
 
         return new Invoice(0, invoiceNumber, payment.getId(), issueDate, cufe,
                 fileName, filePath.toString(), LocalDateTime.now());
+    }
+
+    /**
+     * Writes the invoice .txt file for an already built and persisted invoice.
+     * Kept outside the database transaction on purpose: if the file cannot be
+     * written the payment and invoice rows stay consistent and the file can be
+     * regenerated later from the financial menu.
+     *
+     * @throws IOException when the file cannot be created or written
+     */
+    public static void writeInvoiceFile(Invoice invoice, Payment payment, PaymentConcept concept,
+                                        GuardianSummary client) throws IOException {
+        writeInvoiceFile(invoice, payment, concept, client, true);
+    }
+
+    /** Writes an invoice with optional client contact details. */
+    public static void writeInvoiceFile(Invoice invoice, Payment payment, PaymentConcept concept,
+                                        GuardianSummary client,
+                                        boolean includeSensitiveClientData) throws IOException {
+        Path folder = Paths.get(AppConstants.INVOICE_FOLDER).toAbsolutePath().normalize();
+        Files.createDirectories(folder);
+        restrictToOwner(folder, true);
+        String content = buildContent(payment, concept, client, invoice.getInvoiceNumber(),
+                invoice.getIssueDate(), invoice.getCufe(), includeSensitiveClientData);
+        writePrivateText(resolveInvoicePath(invoice), content);
+    }
+
+    /** Writes private invoice content and applies owner-only permissions where supported. */
+    public static void writePrivateText(Path path, String content) throws IOException {
+        Path normalized = path.toAbsolutePath().normalize();
+        Path parent = normalized.getParent();
+        if (parent == null) {
+            throw new IOException("Invoice path has no parent directory.");
+        }
+        Files.createDirectories(parent);
+        if (Files.isSymbolicLink(normalized)) {
+            throw new IOException("Refusing to write through a symbolic link.");
+        }
+        Path temporary = Files.createTempFile(parent, ".invoice-", ".tmp");
+        try {
+            Files.writeString(temporary, content, StandardCharsets.UTF_8,
+                    StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            restrictToOwner(temporary, false);
+            Files.move(temporary, normalized, StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+            restrictToOwner(normalized, false);
+        } catch (java.nio.file.AtomicMoveNotSupportedException exception) {
+            Files.move(temporary, normalized, StandardCopyOption.REPLACE_EXISTING);
+            restrictToOwner(normalized, false);
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    private static void restrictToOwner(Path path, boolean directory) {
+        try {
+            java.util.Set<PosixFilePermission> permissions = new java.util.HashSet<>();
+            permissions.add(PosixFilePermission.OWNER_READ);
+            permissions.add(PosixFilePermission.OWNER_WRITE);
+            if (directory) {
+                permissions.add(PosixFilePermission.OWNER_EXECUTE);
+            }
+            Files.setPosixFilePermissions(path, permissions);
+        } catch (UnsupportedOperationException | IOException ignored) {
+            // Windows and other non-POSIX file systems use their native ACLs.
+        }
+    }
+
+    /** Resolves only file names inside the application invoice directory. */
+    public static Path resolveInvoicePath(Invoice invoice) throws IOException {
+        Path folder = Paths.get(AppConstants.INVOICE_FOLDER).toAbsolutePath().normalize();
+        Path target = folder.resolve(invoice.getFileName()).normalize();
+        if (!target.startsWith(folder)) {
+            throw new IOException("Invoice path is outside the invoice directory.");
+        }
+        return target;
     }
 
     /**
@@ -89,7 +164,15 @@ public final class InvoiceGenerator {
      */
     public static String rebuildContent(Payment payment, PaymentConcept concept, GuardianSummary client,
                                         String invoiceNumber, LocalDate issueDate, String cufe) {
-        return buildContent(payment, concept, client, invoiceNumber, issueDate, cufe);
+        return rebuildContent(payment, concept, client, invoiceNumber, issueDate, cufe, true);
+    }
+
+    /** Rebuilds content while applying the current user's client-data policy. */
+    public static String rebuildContent(Payment payment, PaymentConcept concept, GuardianSummary client,
+                                        String invoiceNumber, LocalDate issueDate, String cufe,
+                                        boolean includeSensitiveClientData) {
+        return buildContent(payment, concept, client, invoiceNumber, issueDate, cufe,
+                includeSensitiveClientData);
     }
 
     /** Simulated CUFE: SHA-256 of {@code numeroFactura|NIT|fechaEmision(ISO)}. */
@@ -119,7 +202,8 @@ public final class InvoiceGenerator {
     // ------------------------------------------------------------------
 
     private static String buildContent(Payment payment, PaymentConcept concept, GuardianSummary client,
-                                       String invoiceNumber, LocalDate issueDate, String cufe) {
+                                       String invoiceNumber, LocalDate issueDate, String cufe,
+                                       boolean includeSensitiveClientData) {
         List<String> lines = new ArrayList<>();
         String width64 = repeat(HEAVY_LINE, 64);
 
@@ -142,8 +226,9 @@ public final class InvoiceGenerator {
         if (client != null) {
             lines.add("Nombre:      " + client.getFullName());
             lines.add("Documento:   " + client.getDocumentDescription());
-            lines.add("Dirección:   " + (client.getAddress() == null || client.getAddress().isBlank()
-                    ? "No registrada" : client.getAddress()));
+            String address = client.getAddress() == null || client.getAddress().isBlank()
+                    ? "No registrada" : client.getAddress();
+            lines.add("Dirección:   " + (includeSensitiveClientData ? address : "[REDACTADA]"));
         } else {
             lines.add("Nombre:      (acudiente no registrado en el pago)");
             lines.add("Documento:   N/A");

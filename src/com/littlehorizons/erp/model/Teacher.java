@@ -1,5 +1,7 @@
 package com.littlehorizons.erp.model;
 
+import com.littlehorizons.erp.util.PrivacyUtils;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -82,6 +84,12 @@ public class Teacher {
     public String getIdentityLabel() {
         String type = documentType == null ? "" : documentType.getValue();
         return type + "-" + documentNumber;
+    }
+
+    /** Returns an identifier suitable for console output. */
+    public String getMaskedIdentityLabel() {
+        String type = documentType == null ? "" : documentType.getValue();
+        return type + "-" + PrivacyUtils.maskIdentifier(documentNumber);
     }
 
     public int getId() {
@@ -199,9 +207,8 @@ public class Teacher {
     @Override
     public String toString() {
         return "Teacher{id=" + id
-                + ", document='" + getIdentityLabel() + '\''
+                + ", document='" + getMaskedIdentityLabel() + '\''
                 + ", name='" + getFullName() + '\''
-                + ", email='" + email + '\''
                 + ", status=" + (status == null ? null : status.getValue())
                 + '}';
     }

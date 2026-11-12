@@ -3,6 +3,8 @@ package com.littlehorizons.erp.model;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 
+import com.littlehorizons.erp.util.PrivacyUtils;
+
 /**
  * Guardian (acudiente) entity mapped from the {@code acudientes} table.
  */
@@ -191,7 +193,7 @@ public class Guardian {
     @Override
     public String toString() {
         return String.format("ID %-4d | %-11s %-15s | %-35s | %-15s | %s",
-                id, documentType, documentNumber, getFullName(), relationship,
+                id, documentType, PrivacyUtils.maskIdentifier(documentNumber), getFullName(), relationship,
                 financialResponsible ? "Financial responsible" : "Not financial responsible");
     }
 }

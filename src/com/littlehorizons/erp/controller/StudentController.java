@@ -6,8 +6,11 @@ import com.littlehorizons.erp.model.Gender;
 import com.littlehorizons.erp.model.Student;
 import com.littlehorizons.erp.model.StudentStatus;
 import com.littlehorizons.erp.model.StudentSummary;
+import com.littlehorizons.erp.model.PageRequest;
+import com.littlehorizons.erp.model.PageResult;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
+import com.littlehorizons.erp.util.PrivacyUtils;
 
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -35,13 +38,14 @@ public class StudentController {
                 return;
             }
             if (studentDao.findByDocumentNumber(student.getDocumentNumber()) != null) {
-                ConsoleUtils.printError("A student with document " + student.getDocumentNumber()
+                ConsoleUtils.printError("A student with document "
+                        + PrivacyUtils.maskIdentifier(student.getDocumentNumber())
                         + " already exists.");
                 return;
             }
             int id = studentDao.save(student);
             ConsoleUtils.printSuccess("Student registered with id " + id + ": " + student.getFullName());
-            LoggerUtil.logInfo("Student created: id=" + id + ", document=" + student.getDocumentNumber());
+            LoggerUtil.logInfo("Student created: id=" + id);
         } catch (SQLException exception) {
             ConsoleUtils.printError("Could not register the student.");
             LoggerUtil.logError("StudentController.createStudent", exception);
@@ -53,9 +57,14 @@ public class StudentController {
         ConsoleUtils.printHeader("STUDENT LIST");
         try {
             String term = ConsoleUtils.readLine("Search by name or document (empty = show all): ");
-            List<Student> students = term.isBlank()
-                    ? studentDao.findAll()
-                    : studentDao.searchByNameOrDocument(term);
+            int pageNumber = ConsoleUtils.readInt("Page number (1 = first): ",
+                    1, 1_000_000, 1);
+            int pageSize = ConsoleUtils.readInt("Page size (1-100): ", 1, 100, 20);
+            PageRequest pageRequest = new PageRequest(pageNumber, pageSize);
+            PageResult<Student> page = term.isBlank()
+                    ? studentDao.findPage(pageRequest)
+                    : studentDao.searchPage(term, pageRequest);
+            List<Student> students = page.items();
             if (students.isEmpty()) {
                 ConsoleUtils.printError("No students found.");
                 return;
@@ -64,8 +73,8 @@ public class StudentController {
                     .sorted(Comparator.comparing(Student::getLastName)
                             .thenComparing(Student::getFirstName))
                     .forEach(student -> System.out.println("  " + student));
-            long total = students.stream().count();
-            System.out.println("  Total: " + total + " student(s).");
+            System.out.println("  Page " + pageNumber + " (" + students.size()
+                    + " student(s))" + (page.hasNext() ? "; more results available." : "."));
         } catch (SQLException exception) {
             ConsoleUtils.printError("Could not retrieve the student list.");
             LoggerUtil.logError("StudentController.listStudents", exception);
@@ -87,7 +96,7 @@ public class StudentController {
             }
             Student duplicate = studentDao.findByDocumentNumber(updated.getDocumentNumber());
             if (duplicate != null && duplicate.getId() != current.getId()) {
-                ConsoleUtils.printError("Document " + updated.getDocumentNumber()
+                ConsoleUtils.printError("Document " + PrivacyUtils.maskIdentifier(updated.getDocumentNumber())
                         + " already belongs to another student.");
                 return;
             }
@@ -121,8 +130,8 @@ public class StudentController {
 
     /**
      * Deletes a student. Soft delete (estado = 'Retirado') is offered first;
-     * hard delete is only allowed after an explicit confirmation because the
-     * CASCADE removes enrollments and guardian links.
+     * hard delete is only allowed after an explicit confirmation and is
+     * blocked by the database when historical records still reference it.
      */
     public void deleteStudent() {
         ConsoleUtils.printHeader("DELETE STUDENT");
@@ -138,8 +147,8 @@ public class StudentController {
                 ConsoleUtils.printSuccess("Student marked as 'Retirado'.");
                 return;
             }
-            if (ConsoleUtils.confirm("PERMANENTLY delete the student? All enrollments and "
-                    + "guardian links will be removed (CASCADE).")) {
+            if (ConsoleUtils.confirm("PERMANENTLY delete the student? Historical records "
+                    + "may prevent deletion; retirement is safer.")) {
                 studentDao.deleteById(student.getId());
                 ConsoleUtils.printSuccess("Student permanently deleted.");
                 LoggerUtil.logInfo("Student hard-deleted: id=" + student.getId());
@@ -214,7 +223,7 @@ public class StudentController {
         String phone = ConsoleUtils.readOptionalText("Phone"
                 + fallbackHint(current == null ? null : current.getPhone())
                 + " (empty = none): ", current == null ? null : current.getPhone());
-        String email = ConsoleUtils.readOptionalText("Email"
+        String email = ConsoleUtils.readOptionalEmail("Email"
                 + fallbackHint(current == null ? null : current.getEmail())
                 + " (empty = none): ", current == null ? null : current.getEmail());
         String bloodType = ConsoleUtils.readOptionalText("Blood type"
@@ -257,7 +266,7 @@ public class StudentController {
     }
 
     private String fallbackHint(String current) {
-        return current == null || current.isBlank() ? "" : " (current: " + current + ")";
+        return current == null || current.isBlank() ? "" : " (current value stored)";
     }
 
     private DocumentType readDocumentType(DocumentType current) {

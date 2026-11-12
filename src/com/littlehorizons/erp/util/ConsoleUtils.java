@@ -28,14 +28,30 @@ public final class ConsoleUtils {
         return SCANNER.nextLine().trim();
     }
 
+    /** Reads a password without echo when the process has an attached console. */
+    public static char[] readSecret(String prompt) {
+        if (System.console() != null) {
+            char[] value = System.console().readPassword(prompt);
+            return value == null ? new char[0] : value;
+        }
+        return readLine(prompt).toCharArray();
+    }
+
     /** Reads a non-empty text value, retrying until valid. */
     public static String readRequiredText(String prompt) {
+        return readRequiredText(prompt, 255);
+    }
+
+    /** Reads a non-empty text value with a database-safe maximum length. */
+    public static String readRequiredText(String prompt, int maxLength) {
         while (true) {
             String value = readLine(prompt);
-            if (!value.isEmpty()) {
+            if (!value.isEmpty() && value.length() <= maxLength) {
                 return value;
             }
-            System.out.println("  [!] This value is required. Please try again.");
+            System.out.println(value.isEmpty()
+                    ? "  [!] This value is required. Please try again."
+                    : "  [!] Maximum length is " + maxLength + " characters.");
         }
     }
 
@@ -43,6 +59,20 @@ public final class ConsoleUtils {
     public static String readOptionalText(String prompt, String fallback) {
         String value = readLine(prompt);
         return value.isEmpty() ? fallback : value;
+    }
+
+    /** Reads an optional email with a basic syntax and length check. */
+    public static String readOptionalEmail(String prompt, String fallback) {
+        while (true) {
+            String value = readLine(prompt);
+            if (value.isEmpty()) {
+                return fallback;
+            }
+            if (value.length() <= 100 && value.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+                return value;
+            }
+            System.out.println("  [!] Enter a valid email address or leave it empty.");
+        }
     }
 
     /** Reads an integer between min and max (inclusive); {@code cancelValue} returns early. */
@@ -90,6 +120,25 @@ public final class ConsoleUtils {
         return readDouble(prompt, 0.0, Double.MAX_VALUE);
     }
 
+    /** Reads a monetary value; empty input returns the supplied fallback. */
+    public static double readOptionalMoney(String prompt, double fallback) {
+        while (true) {
+            String raw = readLine(prompt);
+            if (raw.isEmpty()) {
+                return fallback;
+            }
+            try {
+                double value = Double.parseDouble(raw.replace(',', '.'));
+                if (Double.isFinite(value) && value >= 0.0 && value <= 99_999_999.99) {
+                    return value;
+                }
+            } catch (NumberFormatException ignored) {
+                // The retry message below is intentionally generic.
+            }
+            System.out.println("  [!] Enter a valid amount between 0 and 99,999,999.99.");
+        }
+    }
+
     /** Reads a date in ISO format (yyyy-MM-dd). */
     public static LocalDate readDate(String prompt) {
         while (true) {
@@ -104,15 +153,16 @@ public final class ConsoleUtils {
 
     /** Reads a date in ISO format; empty input returns the fallback date. */
     public static LocalDate readOptionalDate(String prompt, LocalDate fallback) {
-        String raw = readLine(prompt + " (yyyy-MM-dd, empty = " + fallback + "): ");
-        if (raw.isEmpty()) {
-            return fallback;
-        }
-        try {
-            return LocalDate.parse(raw, DATE_FORMAT);
-        } catch (DateTimeParseException exception) {
-            System.out.println("  [!] Invalid date, using " + fallback + ".");
-            return fallback;
+        while (true) {
+            String raw = readLine(prompt + " (yyyy-MM-dd, empty = keep current): ");
+            if (raw.isEmpty()) {
+                return fallback;
+            }
+            try {
+                return LocalDate.parse(raw, DATE_FORMAT);
+            } catch (DateTimeParseException exception) {
+                System.out.println("  [!] Invalid date. Please try again.");
+            }
         }
     }
 

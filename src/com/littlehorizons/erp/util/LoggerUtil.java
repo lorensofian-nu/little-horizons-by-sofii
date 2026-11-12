@@ -23,7 +23,8 @@ public final class LoggerUtil {
 
     /** Appends an error entry to the log file. Never throws. */
     public static void logError(String context, Throwable error) {
-        write(context + " | " + error.getClass().getSimpleName() + ": " + error.getMessage());
+        // Exception messages may contain SQL fragments or personal data.
+        write(context + " | " + error.getClass().getSimpleName());
     }
 
     /** Appends an informational entry to the log file. Never throws. */

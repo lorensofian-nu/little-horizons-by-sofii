@@ -4,6 +4,7 @@ import com.littlehorizons.erp.controller.InvoiceController;
 import com.littlehorizons.erp.controller.PaymentConceptController;
 import com.littlehorizons.erp.controller.PaymentController;
 import com.littlehorizons.erp.util.ConsoleUtils;
+import com.littlehorizons.erp.model.UserRole;
 
 /**
  * Financial module menu. Instantiates its controllers with no-arg constructor
@@ -16,9 +17,13 @@ public class FinancialView {
     private final InvoiceController invoiceController;
 
     public FinancialView() {
+        this(UserRole.ADMINISTRATOR);
+    }
+
+    public FinancialView(UserRole userRole) {
         this.conceptController = new PaymentConceptController();
-        this.paymentController = new PaymentController();
-        this.invoiceController = new InvoiceController();
+        this.paymentController = new PaymentController(userRole);
+        this.invoiceController = new InvoiceController(userRole);
     }
 
     /** Main financial menu loop (0 = back). */

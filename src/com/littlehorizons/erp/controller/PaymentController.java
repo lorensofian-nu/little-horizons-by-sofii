@@ -11,16 +11,17 @@ import com.littlehorizons.erp.model.PaymentConcept;
 import com.littlehorizons.erp.model.PaymentMethod;
 import com.littlehorizons.erp.model.PaymentPeriod;
 import com.littlehorizons.erp.model.StudentSummary;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.InvoiceGenerator;
 import com.littlehorizons.erp.util.LoggerUtil;
+import com.littlehorizons.erp.service.FinancialTransactionService;
 
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -34,11 +35,19 @@ public class PaymentController {
     private final PaymentDao paymentDao;
     private final PaymentConceptController conceptController;
     private final InvoiceDao invoiceDao;
+    private final FinancialTransactionService financialTransactionService;
+    private final UserRole userRole;
 
     public PaymentController() {
+        this(UserRole.ADMINISTRATOR);
+    }
+
+    public PaymentController(UserRole userRole) {
         this.paymentDao = new PaymentDaoImpl();
         this.conceptController = new PaymentConceptController();
         this.invoiceDao = new InvoiceDaoImpl();
+        this.financialTransactionService = new FinancialTransactionService();
+        this.userRole = userRole;
     }
 
     // ------------------------------------------------------------------
@@ -54,6 +63,10 @@ public class PaymentController {
                 return;
             }
             GuardianSummary guardian = selectGuardian(student.getStudentId());
+            if (guardian == null) {
+                ConsoleUtils.printError("A linked guardian is required before registering a payment.");
+                return;
+            }
 
             PaymentConcept concept = conceptController.selectActiveConcept();
             if (concept == null) {
@@ -63,10 +76,8 @@ public class PaymentController {
             // Personalized amount per student (sibling discounts, etc.).
             double defaultAmount = concept.getBaseAmount().doubleValue();
             System.out.printf("  Base amount of the concept: %s%n", InvoiceGenerator.formatMoney(defaultAmount));
-            double amountValue = ConsoleUtils.readMoney("Amount paid (empty = base amount): ");
-            if (amountValue <= 0) {
-                amountValue = defaultAmount;
-            }
+            double amountValue = ConsoleUtils.readOptionalMoney(
+                    "Amount paid (empty = base amount): ", defaultAmount);
 
             LocalDate paymentDate = ConsoleUtils.readOptionalDate("Payment date", LocalDate.now());
             String methodLabel = ConsoleUtils.readOption("Payment method:", PaymentMethod.labels());
@@ -82,10 +93,6 @@ public class PaymentController {
             // Receipt number: empty -> auto-generated sequential number.
             String receiptNumber = ConsoleUtils.readOptionalText(
                     "Receipt number (empty = auto): ", null);
-            if (receiptNumber == null || receiptNumber.isBlank()) {
-                receiptNumber = paymentDao.nextReceiptNumber(academicYear);
-            }
-
             Payment payment = new Payment(0, student.getStudentId(),
                     guardian == null ? null : guardian.getId(),
                     concept.getId(),
@@ -93,12 +100,12 @@ public class PaymentController {
                     paymentDate, method, receiptNumber, academicYear,
                     PaymentPeriod.fromLabel(periodLabel), notes, null);
 
-            // ---- Atomic-ish flow: pago -> factura -> archivo .txt ----
-            paymentDao.save(payment);
-            Invoice invoice = generateInvoice(payment, concept, guardian);
+            // Database writes are atomic; the TXT file is written after commit.
+            Invoice invoice = financialTransactionService.registerPayment(payment, concept, guardian,
+                    userRole.canViewSensitiveClientData());
 
             ConsoleUtils.printSuccess("Payment registered (id " + payment.getId()
-                    + ", receipt " + receiptNumber + ").");
+                    + ", receipt " + payment.getReceiptNumber() + ").");
             ConsoleUtils.printSuccess("Invoice " + invoice.getInvoiceNumber()
                     + " generated: " + invoice.getFilePath());
             if (ConsoleUtils.confirm("Show the invoice on screen now?")) {
@@ -111,15 +118,6 @@ public class PaymentController {
             ConsoleUtils.printError("The payment was registered but the invoice file could not be written.");
             LoggerUtil.logError("PaymentController.registerPayment", exception);
         }
-    }
-
-    /** Generates and persists the invoice of a confirmed payment. */
-    public Invoice generateInvoice(Payment payment, PaymentConcept concept, GuardianSummary guardian)
-            throws SQLException, IOException {
-        String invoiceNumber = invoiceDao.nextInvoiceNumber();
-        Invoice invoice = InvoiceGenerator.generateInvoice(payment, concept, guardian, invoiceNumber);
-        invoiceDao.save(invoice);
-        return invoice;
     }
 
     // ------------------------------------------------------------------
@@ -280,14 +278,8 @@ public class PaymentController {
         List<GuardianSummary> guardians = studentId == null
                 ? paymentDao.listGuardians()
                 : paymentDao.findGuardiansByStudent(studentId);
-        if (studentId != null && guardians.isEmpty()) {
-            if (!ConsoleUtils.confirm("This student has no linked guardians. Show all guardians?")) {
-                return null;
-            }
-            guardians = paymentDao.listGuardians();
-        }
         if (guardians.isEmpty()) {
-            ConsoleUtils.printError("No guardians registered yet.");
+            ConsoleUtils.printError("This student has no linked guardian.");
             return null;
         }
         System.out.println("  Guardians:");
@@ -298,6 +290,12 @@ public class PaymentController {
             return null;
         }
         GuardianSummary guardian = paymentDao.findGuardianById(guardianId);
+        if (studentId != null && guardian != null
+                && paymentDao.findGuardiansByStudent(studentId).stream()
+                .noneMatch(candidate -> candidate.getId() == guardianId)) {
+            ConsoleUtils.printError("The selected guardian is not linked to this student.");
+            return null;
+        }
         if (guardian == null) {
             ConsoleUtils.printError("Guardian " + guardianId + " not found.");
             return null;
@@ -312,14 +310,18 @@ public class PaymentController {
     /** Prints the content of an invoice .txt file on the console. */
     public void printInvoiceFile(Invoice invoice) {
         try {
-            Path filePath = Paths.get(invoice.getFilePath());
+            Path filePath = InvoiceGenerator.resolveInvoicePath(invoice);
             if (!Files.exists(filePath)) {
                 ConsoleUtils.printError("Invoice file not found: " + invoice.getFilePath());
                 return;
             }
             System.out.println();
-            Files.readAllLines(filePath, java.nio.charset.StandardCharsets.UTF_8)
-                    .forEach(System.out::println);
+            String content = Files.readString(filePath, java.nio.charset.StandardCharsets.UTF_8);
+            if (!userRole.canViewSensitiveClientData()) {
+                content = content.replaceAll("(?m)^Dirección:\\s+.*$",
+                        "Dirección:   [REDACTADA]");
+            }
+            System.out.println(content);
         } catch (IOException exception) {
             ConsoleUtils.printError("Could not read the invoice file.");
             LoggerUtil.logError("PaymentController.printInvoiceFile", exception);
