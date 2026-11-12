@@ -53,7 +53,7 @@ Registro Detallado: Cada pago realizado debe registrar: estudiante, concepto de 
 Historial de Pagos: Debe ser posible consultar todo el historial de pagos de un estudiante o de un acudiente (si tiene varios hijos en el colegio).  
 Identificación de Morosos: El sistema debe facilitar la generación de reportes de estudiantes con pagos pendientes por más de un mes.  
 3.3. Generación de Facturas Electrónicas  
-El sistema debe generar automáticamente una Factura Electrónica visual en formato PDF que cumpla con la normativa colombiana de la DIAN.  
+El sistema debe generar automáticamente una Factura Electrónica visual en formato TXT que cumpla con la estructura académica definida para el proyecto.
 Características de la Factura:  
 Información del Colegio: Razón social ("Colegio Internacional Little Horizons S.A.S."), NIT, dirección, teléfono, correo electrónico.  
 Información del Cliente: Nombre completo del acudiente responsable del pago, documento de identidad, dirección.  
@@ -69,8 +69,8 @@ Resolución de habilitación de facturación (simulada)
 Flujo de Generación:  
 Al confirmar un pago, el sistema recopila automáticamente todos los datos necesarios desde la base de datos.  
 Calcula el CUFE simulado (puede ser un hash del número de factura \+ NIT \+ fecha).  
-Genera el archivo PDF con toda la información formateada profesionalmente.  
-Guarda el PDF en una carpeta del proyecto con nombre único (ej: factura\_000123.pdf).  
+Genera el archivo TXT con toda la información formateada profesionalmente.
+Guarda el TXT en una carpeta del proyecto con nombre único (ej: factura\_000123.txt).
 Opcionalmente, muestra un mensaje al usuario con la ruta donde se guardó la factura.  
 4\. Módulo de Gestión de Recursos: Biblioteca y Laboratorios  
 4.1. Catálogo de Recursos  
@@ -252,7 +252,7 @@ Checklist de Entrega:
 \[ \] Gestión correcta de recursos con try-with-resources  
 \[ \] Aplicación de principios SOLID  
 \[ \] Uso de lambdas y Stream API en procesamiento de colecciones  
-\[ \] Generación de facturas PDF funcionando correctamente  
+\[ \] Generación de reportes/facturas TXT funcionando correctamente
 ✅ Documentación  
 \[ \] Carpeta docs/ creada en el repositorio  
 \[ \] Archivo database.sql con DDL y DML completos  
@@ -271,5 +271,5 @@ Checklist de Entrega:
 \[ \] Todas las operaciones CRUD funcionan  
 \[ \] No hay errores de ejecución en flujos principales  
 \[ \] Los logs se generan correctamente en error\_log.txt  
-\[ \] Las facturas PDF se generan en la carpeta correcta
+\[ \] Los reportes/facturas TXT se generan en la carpeta correcta
 

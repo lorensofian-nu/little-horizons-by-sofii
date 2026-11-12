@@ -1,0 +1,155 @@
+AUDITORIA RIGUROSA - LITTLE HORIZONS ERP
+Fecha: 2026-11-11
+Alcance: Little-Horizons-By-Sofii.md, README.md, src/, docs/database.sql y configuración del proyecto.
+Formato solicitado para reportes/facturas: TXT. No se incluyen credenciales, hashes ni datos personales en este informe.
+
+1. CONCLUSION EJECUTIVA
+
+Resultado: APROBADO CON RESERVA DE INTEGRACION.
+
+La implementación cumple la mayor parte de los requisitos funcionales, de arquitectura,
+seguridad y persistencia descritos en el documento de alcance. Se corrigieron las
+debilidades críticas detectadas: credenciales versionadas, conexión insegura, logs con
+identificadores, exposición directa de documentos, rutas de archivos manipulables,
+secuencias concurrentes, capacidad de clubes no atómica y persistencia de pagos/facturas
+en operaciones separadas.
+
+La única reserva técnica importante es que el entorno de revisión no tiene cliente ni
+servidor MySQL disponibles. Por eso se certificó la compilación, la inspección estática,
+los conteos del DML y la coherencia del código, pero no una ejecución completa de DDL,
+CRUD, transacciones o generación de TXT contra MySQL.
+
+2. CUMPLIMIENTO DEL DOCUMENTO .MD
+
+[OK] El requisito de factura/reporte se dejó explícitamente en formato .txt, conforme a
+la instrucción posterior del usuario. Se actualizaron Little-Horizons-By-Sofii.md,
+README.md, InvoiceGenerator, DAO de facturas y el esquema SQL.
+
+[OK] Arquitectura por capas: View -> Controller -> Service/DAO -> MySQL -> Model.
+[OK] CRUD y módulos principales presentes en estudiantes, acudientes, profesores,
+matrículas, materias, notas, asistencia, clubes, eventos, pagos, facturas y recursos.
+[OK] DML mínimo verificado por conteo estático:
+     profesores=30, estudiantes=30, acudientes=30, materias=33,
+     registros_academicos=41, clubes=30, pagos=40, recursos=30.
+[OK] Las relaciones de acudientes, matrículas, asignaciones, notas, asistencia,
+     clubes, eventos, pagos, facturas y préstamos conservan sus referencias.
+[OK] Los datos de prueba fueron anonimizados y usan identificadores sintéticos y
+     dominios no enrutables.
+[OK] El README conserva instalación, configuración, estructura, patrones, errores,
+     limitaciones y mejoras futuras sin publicar datos de contacto personal.
+[RESERVA] La creación de usuarios no se hace en database.sql: el primer administrador
+se crea con ERP_INITIAL_ADMIN_PASSWORD, fuera del repositorio. Esto es intencional para
+evitar una contraseña inicial conocida.
+
+3. SEGURIDAD
+
+[OK] db.properties fue retirado del control de versiones y se agregó
+db.properties.example. La contraseña no tiene valor por defecto.
+[OK] TLS está activo por defecto, se verifica el certificado y
+allowPublicKeyRetrieval queda desactivado por defecto.
+[OK] Las consultas JDBC usan PreparedStatement; no se observaron concatenaciones de
+entrada de usuario para construir SQL.
+[OK] Contraseñas: PBKDF2WithHmacSHA256 con salt aleatorio y 120000 iteraciones.
+La contraseña de bootstrap llega por entorno, se convierte a char[] y se limpia.
+[OK] Hay máximo de tres intentos de autenticación y roles Administrador, Profesor y
+Secretaria con control de módulos.
+[OK] LoggerUtil no escribe mensajes de excepciones, SQL, contraseñas ni identificadores.
+Los accesos de autenticación se registran con mensajes genéricos.
+[OK] Documentos mostrados en listados y errores se enmascaran. Los emails y teléfonos
+de profesores se muestran parcialmente o enmascarados.
+[OK] La generación y regeneración de TXT valida que el destino permanezca dentro de
+invoices/. En sistemas POSIX se aplican permisos de propietario al directorio y archivo.
+[OK] Las facturas generadas se excluyen mediante .gitignore.
+[OK] Las claves foráneas del esquema ejecutable usan ON DELETE RESTRICT para evitar
+eliminaciones históricas en cascada.
+[RIESGO CONTROLADO] Las facturas incluyen datos del acudiente porque el requisito del
+documento lo exige. Son archivos locales para usuarios autenticados y se escriben con
+permisos restrictivos; el sistema operativo debe proteger también el directorio.
+
+4. PERSISTENCIA E INTEGRIDAD
+
+[OK] Pago y factura se insertan en una misma transacción mediante
+FinancialTransactionService. El TXT se escribe después del commit y puede regenerarse.
+[OK] Recibos y facturas usan secuencias bloqueadas con SELECT ... FOR UPDATE para
+evitar duplicados por concurrencia.
+[OK] La inscripción a clubes bloquea la fila del club, valida duplicado/cupo e inserta
+en una sola transacción.
+[OK] Se agregaron restricciones CHECK para montos, capacidad, fechas, notas y horarios.
+[OK] Las asignaciones de profesores persisten día y rango horario y rechazan solapes.
+[OK] Los DAO usan conexiones de corta duración y try-with-resources en las operaciones
+normales.
+[RESERVA] Los DAO de préstamos y algunos flujos transaccionales conservan bloques de
+rollback/cierre manual. Funcionan por diseño, pero conviene homogeneizarlos con un
+servicio transaccional común.
+[NO CERTIFICADO EN EJECUCION] No fue posible probar commits, rollbacks, restricciones,
+concurrencia ni regeneración de facturas contra una instancia MySQL real.
+
+5. BUENAS PRACTICAS Y PATRONES
+
+[OK] MVC, DAO, Service Layer, Singleton para configuración y utilidades estáticas
+acotadas. Se separaron presentación, reglas de negocio y acceso a datos.
+[OK] Validación de entrada con reintentos, límites de longitud, fechas coherentes,
+emails válidos, importes acotados y mensajes de error no sensibles.
+[OK] Compatibilidad compilada con Java 17; se eliminaron usos incompatibles con esa
+versión como List.getFirst().
+[OK] La generación de archivos está aislada de la transacción de base de datos.
+[MEJORA FUTURA] Persisten instanciaciones directas de DAOs/controladores y no hay
+inyección de dependencias. Para producción conviene introducir DI e interfaces en
+todos los controladores.
+[OK] El script de instalación no elimina la base de datos. El reset destructivo fue
+separado en docs/database-reset.sql y las actualizaciones existentes tienen versiones
+en docs/migrations/.
+
+6. ESCALABILIDAD
+
+[OK] Las consultas de reportes por fecha se expresan como rangos indexables, no como
+YEAR(fecha), y se evitan conexiones persistentes en los DAO.
+[OK] DatabaseConnection usa un pool JDBC acotado por db.poolSize, con timeout de
+espera, limpieza de estado y cierre al apagar la aplicación.
+[OK] Los listados de estudiantes y acudientes usan PageRequest/PageResult y LIMIT/OFFSET
+con tamaño máximo de 100 registros.
+[OK] Las operaciones críticas tienen bloqueos y restricciones en base de datos, no
+solo validaciones de consola.
+[LIMITACION] Otros listados y reportes todavía pueden cargar resultados completos.
+Conviene aplicar paginación también a reportes masivos y revisar índices con datos
+representativos.
+[LIMITACION] No hay pruebas de carga ni observabilidad centralizada. No puede
+certificarse rendimiento sin datos y servidor representativos.
+
+7. PRIVACIDAD Y NO EXPOSICION
+
+[OK] Se eliminaron datos de contacto personales del README y se sustituyeron los datos
+de prueba de personas por valores sintéticos no enrutable.
+[OK] No se versionan db.properties, contraseñas iniciales ni hashes de usuario.
+[OK] Los listados no imprimen documentos completos; los logs tampoco contienen PII.
+[RESERVA] El control de acceso es por módulo, no por campo. Un usuario autorizado para
+un módulo puede consultar los datos que ese módulo expone. Para un entorno real se
+recomienda autorización por operación/campo, auditoría de accesos y clasificación de
+datos médicos y financieros.
+[RESERVA] Las variables de entorno de bootstrap deben configurarse por un mecanismo
+seguro del sistema operativo o del gestor de secretos; no deben guardarse en scripts,
+historial de shell, CI logs ni documentación compartida.
+
+8. VALIDACIONES EJECUTADAS
+
+[OK] javac --release 17 con lib/mysql-connector-j.jar: compilación exitosa.
+[OK] scripts/run-tests.sh: pruebas unitarias de hash, roles, enmascaramiento, CUFE y
+rechazo de traversal de rutas exitosas.
+[OK] git diff --check: sin errores de whitespace.
+[OK] Conteo estático de tablas principales: todos los mínimos solicitados cumplidos.
+[OK] Búsqueda estática: sin nombre_archivo_pdf, ON DELETE CASCADE en el esquema activo,
+getFirst(), configuración TLS insegura ni API anterior de generación de PDF.
+[NO EJECUTADO] Pruebas de integración MySQL: el entorno no tenía mysql/mysqladmin ni
+servidor MySQL disponible.
+
+9. ARCHIVO DE ENTREGA
+
+Reporte: AUDITORIA_RIGUROSA.txt
+Factura/reporte generado por la aplicación: carpeta invoices/, extensión .txt.
+
+10. RECOMENDACION FINAL
+
+Antes de declarar el sistema listo para producción, ejecutar docs/database.sql en una
+base MySQL 8.x aislada, crear el administrador mediante un gestor de secretos, ejecutar
+un recorrido CRUD completo por cada módulo, probar rollback y concurrencia de pagos,
+clubes y secuencias, y ejecutar pruebas de carga sobre los reportes de mayor volumen.

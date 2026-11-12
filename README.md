@@ -44,9 +44,9 @@ Little Horizons ERP centraliza y automatiza los procesos académicos, administra
 
 | Campo | Información |
 |---|---|
-| **Nombre completo** | Sofía Nuñez |
-| **Correo electrónico** | lorensofian23@gmail.com |
-| **Información de contacto** | GitHub: [lorensofian-nu](https://github.com/lorensofian-nu) · Alias: Atropos |
+| **Nombre completo** | Equipo académico Little Horizons |
+| **Correo electrónico** | No publicado por privacidad |
+| **Información de contacto** | Gestionar el contacto mediante el canal privado del repositorio |
 
 ---
 
@@ -73,7 +73,10 @@ Little Horizons ERP centraliza y automatiza los procesos académicos, administra
 
 ### 6.1. Creación de la base de datos
 
-Ejecutar el script completo `docs/database.sql`, que crea la base de datos `erp_little_horizons`, todas las tablas (DDL) y los datos de prueba (DML, mínimo 30 registros por tabla principal):
+Ejecutar el script completo `docs/database.sql`, que crea la base de datos `erp_little_horizons`, todas las tablas (DDL) y los datos de prueba (DML, mínimo 30 registros por tabla principal). Este es el script de instalación no destructiva para una base nueva o vacía.
+
+Los datos DML son sintéticos, no representan personas reales y usan dominios no
+enrutables para evitar exposición de información personal:
 
 ```bash
 mysql -u root -p < docs/database.sql
@@ -85,17 +88,32 @@ O desde el cliente de MySQL:
 SOURCE /ruta/al/proyecto/docs/database.sql;
 ```
 
+Para reiniciar completamente una instalación académica, usar únicamente el
+script explícitamente destructivo `docs/database-reset.sql`. Nunca ejecutarlo
+contra datos reales.
+
+Para actualizar una base existente sin borrarla, ejecutar las migraciones
+versionadas de `docs/migrations/` en orden y revisar `schema_migrations`.
+
 ### 6.2. Configuración de credenciales
 
-Editar el archivo `db.properties` en la raíz del proyecto:
+Copiar `db.properties.example` como `db.properties` y configurar un usuario
+dedicado de MySQL:
 
 ```properties
 db.host=localhost
 db.port=3306
 db.name=erp_little_horizons
-db.user=root
+db.user=erp_app
 db.password=TU_CONTRASEÑA
+db.ssl=true
+db.verifyServerCertificate=true
+db.allowPublicKeyRetrieval=false
+db.poolSize=10
 ```
+
+`db.properties` es local y no debe subirse al repositorio. TLS está activado
+por defecto; desactivarlo solo es aceptable para una instancia local aislada.
 
 ### 6.3. Instalación del driver JDBC
 
@@ -108,9 +126,23 @@ El driver MySQL Connector/J ya está incluido en `lib/mysql-connector-j.jar`. No
 ### 7.1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/lorensofian-nu/little-horizons-by-sofii.git
+git clone "$PRIVATE_REPOSITORY_URL"
 cd little-horizons-by-sofii
+cp db.properties.example db.properties
 ```
+
+Después de ejecutar `docs/database.sql`, crea el primer administrador fuera del
+repositorio mediante variables de entorno privadas. La contraseña debe tener al
+menos 12 caracteres:
+
+```bash
+export ERP_INITIAL_ADMIN_USERNAME=admin
+export ERP_INITIAL_ADMIN_PASSWORD='elige-un-secreto-local-de-12-caracteres-o-mas'
+java -cp "out:lib/mysql-connector-j.jar" com.littlehorizons.erp.Main
+```
+
+La aplicación guarda únicamente un hash PBKDF2 y nunca imprime ni registra la
+contraseña.
 
 ### 7.2. Abrir el proyecto en el IDE
 
@@ -124,14 +156,20 @@ Desde la terminal, en la raíz del proyecto:
 javac -encoding UTF-8 -d out $(find src -name "*.java")
 ```
 
+### 7.4. Ejecutar pruebas unitarias
+
+```bash
+./scripts/run-tests.sh
+```
+
+### 7.5. Ejecutar la aplicación
+
 En Windows (PowerShell):
 
 ```powershell
 Get-ChildItem -Recurse src -Filter *.java | ForEach-Object FullName | Out-File sources.txt
 javac -encoding UTF-8 -d out @sources.txt
 ```
-
-### 7.4. Ejecutar
 
 ```bash
 java -cp "out:lib/mysql-connector-j.jar" com.littlehorizons.erp.Main
@@ -183,7 +221,7 @@ little-horizons-by-sofii/
 ├── lib/
 │   └── mysql-connector-j.jar      # Driver JDBC de MySQL
 ├── invoices/                      # Facturas .txt generadas (runtime)
-├── db.properties                  # Credenciales de la base de datos
+├── db.properties.example          # Plantilla de credenciales locales
 └── error_log.txt                  # Log de errores (runtime)
 ```
 
@@ -191,10 +229,11 @@ little-horizons-by-sofii/
 
 - **`model`** — Entidades del dominio: clases de datos puras (`Student`, `Teacher`, `Payment`, `Resource`, ...) con sus enums. No conocen la base de datos ni la consola.
 - **`view`** — Capa de presentación: menús de consola (`StudentView`, `AcademicView`, `TeacherView`, `ExtracurricularView`, `FinancialView`, `ResourceView`, `ReportsView`). Solo leen entrada y muestran salida mediante `ConsoleUtils`.
-- **`controller`** — Capa de lógica de negocio: validaciones (cupos, notas 0.0–5.0, documentos únicos), cálculos (promedios, morosidad) y orquestación entre vistas y DAOs.
+- **`controller`** — Entrada de casos de uso y presentación de resultados.
+- **`service`** — Casos de uso transaccionales, autenticación y reglas que coordinan varios DAOs.
 - **`dao` / `dao.impl`** — Capa de acceso a datos: contratos `XxxDao` e implementaciones JDBC `XxxDaoImpl` que usan exclusivamente `PreparedStatement` y try-with-resources.
-- **`util`** — Utilidades compartidas: `DatabaseConnection` (conexión), `ConsoleUtils` (entrada/salida validada), `LoggerUtil` (log de errores), `InvoiceGenerator` (facturas `.txt`), `AppConstants` (constantes del colegio).
-- **`Main`** — Punto de entrada: valida la conexión, muestra el menú principal y delega a las vistas.
+- **`util`** — Utilidades compartidas: `DatabaseConnection` (pool JDBC acotado), `ConsoleUtils` (entrada/salida validada), `PrivacyUtils` (enmascaramiento de identificadores), `LoggerUtil` (log de errores), `InvoiceGenerator` (facturas `.txt`), `AppConstants` (constantes del colegio).
+- **`Main`** — Punto de entrada: valida la conexión, autentica al usuario, aplica roles y delega a las vistas.
 
 El flujo de una operación es siempre: **View → Controller → DAO → MySQL**, devolviendo los datos por el mismo camino (Model).
 
@@ -215,7 +254,7 @@ El flujo de una operación es siempre: **View → Controller → DAO → MySQL**
 - **Singleton** — `DatabaseConnection`: una única instancia de configuración de conexión, con *double-checked locking*. *Justificación*: garantiza una única fuente de configuración de BD leída una sola vez de `db.properties`.
 - **DAO (Data Access Object)** — Todo acceso a datos pasa por interfaces `dao/` implementadas en `dao/impl/`. *Justificación*: aísla el SQL del resto del sistema, facilita pruebas y cumple el principio de inversión de dependencias.
 - **MVC (Model-View-Controller)** — Separación estricta de responsabilidades en los paquetes `model`, `view` y `controller`. *Justificación*: requisito del proyecto y base del desacoplamiento de la lógica de presentación.
-- **Factory Method (implícito)** — `DatabaseConnection.getConnection()` actúa como fábrica de conexiones `DriverManager.getConnection(...)`. *Justificación*: centraliza la creación de recursos costosos.
+- **Service Layer** — `FinancialTransactionService` coordina el pago, la factura y la secuencia documental dentro de una transacción.
 - **Data Transfer Object / Value Object** — Clases de resumen (`StudentSummary`, `TeacherSummary`, `LoanSummary`, filas de reporte en el módulo de reportes) transportan datos entre capas sin exponer entidades completas. *Justificación*: listings y JOINs livianos sin acoplar módulos.
 
 ---
@@ -226,11 +265,11 @@ El flujo de una operación es siempre: **View → Controller → DAO → MySQL**
 
 **2. Gestión Académica** — Materias por grado con código único; inscripción por período validando matrícula activa; registro de notas por estudiante/materia/profesor/período con validación 0.0–5.0 a un decimal; promedios calculados con Stream API (por materia, por período y por curso); historial académico completo; asistencia diaria (`Presente/Ausente/Tardanza/Excusa Médica`) y reportes de patrones (>3 ausencias en una semana ISO).
 
-**3. Gestión de Profesores** — Directorio con documento y correo únicos; asignación de materias por año y sección (A/B/C) con validación de unicidad; consulta de carga académica por profesor y por materia; cambio de estado (`Activo/Inactivo/Licencia`) preferido sobre el borrado.
+**3. Gestión de Profesores** — Directorio con documento y correo únicos; asignación de materias por año, sección y horario; detección de solapamientos; consulta de carga académica; cambio de estado (`Activo/Inactivo/Licencia`) preferido sobre el borrado.
 
 **4. Actividades Extracurriculares** — Clubes con cupo máximo validado en el momento de la inscripción; membresías con fecha de ingreso/retiro y motivo; eventos por tipo (`Académico/Cultural/Deportivo/Social/Científico`); participantes con rol y, en eventos con competencia, posición obtenida; reportes de participación y podio.
 
-**5. Gestión Financiera** — Conceptos de pago con valores base y recurrentes; pago con monto personalizado por estudiante (descuentos/becas), método de pago y recibo consecutivo; **factura electrónica en `.txt`** generada automáticamente en `invoices/` con: datos del colegio, resolución DIAN (simulada), datos del acudiente, numeración consecutiva `FAC-000001`, detalle (descripción, cantidad, valor unitario, subtotal), IVA 0% y total, **CUFE simulado** (SHA-256 de `número|NIT|fecha`) y **QR ASCII simulado**; historial de pagos por estudiante y por acudiente (todos sus hijos); reporte de morosos (>30 días sin pagar, ordenado por antigüedad).
+**5. Gestión Financiera** — Conceptos de pago con valores base y recurrentes; pago con monto personalizado por estudiante, método de pago y recibo consecutivo; **reporte/factura en `.txt`** generado automáticamente en `invoices/` con datos del colegio, acudiente, CUFE simulado, QR ASCII, detalle, IVA y total. El pago y su factura se persisten atómicamente y los números se asignan mediante secuencias bloqueadas.
 
 **6. Gestión de Recursos** — Inventario por categorías (Libro, Laboratorio, Deportivo, Tecnológico, Didáctico) con código único, ubicación y estados (`Disponible/Prestado/En Mantenimiento/Dado de Baja`); préstamos a estudiantes y profesores en **tablas separadas** (`prestamos_estudiante` / `prestamos_profesor`) con transacción atómica (préstamo ↔ estado del recurso); devoluciones con fecha real; reporte de vencidos.
 
@@ -240,7 +279,7 @@ El flujo de una operación es siempre: **View → Controller → DAO → MySQL**
 
 ## 11. Manejo de Errores y Logs
 
-- **Sistema de logging**: clase `LoggerUtil` — cada error capturado se registra con marca de tiempo (`yyyy-MM-dd HH:mm:ss`), contexto y tipo de excepción en el archivo **`error_log.txt`** en la raíz del proyecto.
+- **Sistema de logging**: clase `LoggerUtil` — cada error capturado se registra con marca de tiempo (`yyyy-MM-dd HH:mm:ss`), contexto y tipo de excepción en el archivo **`error_log.txt`** en la raíz del proyecto; no registra mensajes de excepción, credenciales ni identificadores personales.
 - **Ubicación del archivo de logs**: `error_log.txt` (se crea automáticamente al primer error).
 - **Estrategia de manejo de excepciones**:
   - `SQLException` se captura en la capa de controladores: se muestra un mensaje claro al usuario (`ConsoleUtils.printError`) y se registra la traza (`LoggerUtil.logError`), sin propagar la excepción hasta romper la ejecución.
@@ -260,20 +299,25 @@ _(Opcional — agregar capturas del menú principal, registro de notas, factura 
 ## 13. Problemas Conocidos y Limitaciones
 
 - El **CUFE, el código QR y la resolución DIAN son simulados** (fines académicos): el CUFE es un hash SHA-256 y el QR se dibuja en ASCII. No existe conexión real con la DIAN.
-- Las facturas se generan en **formato `.txt`** (decisión del proyecto), no en PDF.
-- El control de horarios de profesores es básico: la asignación muestra la carga actual del profesor para evitar solapamientos, pero no hay una malla de horarios (el esquema de BD no incluye columnas de horario).
+- Por instrucción del usuario, el reporte/factura se genera en **formato `.txt`**, no en PDF.
+- Las asignaciones persisten día y hora de clase y rechazan solapamientos del mismo profesor.
+- La autenticación usa usuarios, contraseñas PBKDF2 y roles de consola (`Administrador`, `Profesor`, `Secretaria`); los datos de contacto del cliente se redactan para roles no administradores.
 - La aplicación requiere consola con soporte UTF-8 para mostrar correctamente los caracteres de caja (`╔ ═ ╚`) y las tildes.
-- El script `docs/database.sql` reinicia la base de datos (`DROP DATABASE`), por lo que no debe ejecutarse sobre datos reales.
+- `docs/database.sql` no elimina la base de datos. El reset destructivo está
+  separado en `docs/database-reset.sql` y no debe ejecutarse sobre datos reales.
 
 ---
 
 ## 14. Futuras Mejoras
 
 - Interfaz gráfica (JavaFX/Swing) o API REST reutilizando la capa de DAO/Controller.
-- Facturación en PDF real con librería (OpenPDF/iText) e integración con un proveedor de facturación electrónica habilitado ante la DIAN.
-- Módulo de horarios con validación automática de solapamientos.
-- Autenticación de usuarios y roles (administrador, profesor, secretaría).
-- Pruebas unitarias (JUnit 5) para la capa de controladores y cálculo de promedios.
+- Integración con un proveedor real de facturación electrónica habilitado ante la DIAN, fuera del alcance académico del TXT simulado.
+- El pool JDBC está acotado por `db.poolSize` (1..50); estudiantes y acudientes usan
+  paginación de hasta 100 registros por página.
+- Las migraciones incrementales se encuentran en `docs/migrations/`; no se
+  deben editar datos productivos ejecutando el script de instalación.
+- Paginación de reportes masivos, auditoría centralizada y pruebas de carga.
+- Pruebas de integración con MySQL y migración progresiva a JUnit 5.
 
 ---
 
@@ -285,6 +329,6 @@ Este proyecto se desarrolla con fines académicos. Todos los derechos reservados
 
 ## 16. Contacto
 
-- **Repositorio**: https://github.com/lorensofian-nu/little-horizons-by-sofii
-- **Correo**: lorensofian23@gmail.com
-- **Contacto**: ver sección [Autores](#3-autores).
+- **Repositorio**: URL privada del proyecto, no incluida en documentación pública.
+- **Correo**: no publicado por privacidad.
+- **Contacto**: ver sección [Autores](#3-autores) mediante el canal privado del repositorio.
