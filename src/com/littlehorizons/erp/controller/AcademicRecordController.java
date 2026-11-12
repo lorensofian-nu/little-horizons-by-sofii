@@ -240,7 +240,7 @@ public class AcademicRecordController {
             ConsoleUtils.printError("Could not locate the existing grade.");
             return;
         }
-        AcademicRecord record = records.getFirst();
+        AcademicRecord record = records.get(0);
         System.out.println(" Current: " + describeRecord(record));
         record.setGrade(readGradeValue());
         record.setObservations(ConsoleUtils.readOptionalText(

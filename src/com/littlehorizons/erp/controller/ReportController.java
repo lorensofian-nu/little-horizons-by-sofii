@@ -143,7 +143,7 @@ public class ReportController {
      * used when present; otherwise the average of the I-IV periods is taken.
      */
     private StudentAverageReport toStudentAverage(List<GradeRecord> records) {
-        GradeRecord first = records.getFirst();
+        GradeRecord first = records.get(0);
 
         Map<String, Double> subjectAverages = records.stream()
                 .collect(Collectors.groupingBy(GradeRecord::subjectName,
@@ -207,7 +207,7 @@ public class ReportController {
                             .count();
                     double percentage = attended * 100.0 / studentRecords.size();
                     return new AttendancePercentage(
-                            studentRecords.getFirst().studentName(),
+                            studentRecords.get(0).studentName(),
                             attended, studentRecords.size(), percentage);
                 })
                 .sorted(Comparator.comparing(AttendancePercentage::percentage)
@@ -220,7 +220,7 @@ public class ReportController {
     /** Builds a weekly alert from all the records of one student in one week. */
     private AttendanceAlert toAttendanceAlert(String weekLabel,
                                               List<AttendanceRecord> weekRecords) {
-        AttendanceRecord first = weekRecords.getFirst();
+        AttendanceRecord first = weekRecords.get(0);
         long absences = weekRecords.stream()
                 .filter(record -> "Ausente".equals(record.attendanceState()))
                 .count();
