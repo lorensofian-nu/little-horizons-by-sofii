@@ -5,6 +5,7 @@ import com.littlehorizons.erp.dao.impl.UserDaoImpl;
 import com.littlehorizons.erp.model.AuthenticatedUser;
 import com.littlehorizons.erp.util.LoggerUtil;
 import com.littlehorizons.erp.util.PasswordHasher;
+import com.littlehorizons.erp.util.InitialAdminConfiguration;
 
 import java.sql.SQLException;
 
@@ -40,23 +41,24 @@ public class AuthenticationService {
     }
 
     /**
-     * Creates the first administrator only when the database is empty and an
-     * administrator password was supplied out of band through the environment.
-     * No bootstrap credential is stored in the repository or printed to logs.
+     * Creates the first administrator only when the database is empty and a
+     * valid bootstrap password is configured through the environment or the
+     * local, untracked db.properties file.
      */
     public boolean bootstrapInitialAdministrator() throws SQLException {
         if (userDao.countUsers() > 0) {
             return false;
         }
-        String configuredPassword = System.getenv("ERP_INITIAL_ADMIN_PASSWORD");
-        if (configuredPassword == null || configuredPassword.length() < 12) {
+        char[] password = InitialAdminConfiguration.password();
+        if (password.length < 12) {
+            java.util.Arrays.fill(password, '\0');
             return false;
         }
-        String username = System.getenv().getOrDefault("ERP_INITIAL_ADMIN_USERNAME", "admin");
+        String username = InitialAdminConfiguration.username();
         if (username.isBlank() || username.length() > 80) {
+            java.util.Arrays.fill(password, '\0');
             return false;
         }
-        char[] password = configuredPassword.toCharArray();
         try {
             userDao.createUser(username, PasswordHasher.hash(password), "Administrador");
             return true;

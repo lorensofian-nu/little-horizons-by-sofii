@@ -57,7 +57,7 @@ Little Horizons ERP centraliza y automatiza los procesos académicos, administra
 - **Base de datos**: MySQL 8.0+
 - **Driver JDBC**: MySQL Connector/J 8.4.0 (incluido en `lib/mysql-connector-j.jar`)
 - **Librerías externas**: ninguna adicional — la conexión JDBC y la generación de facturas (`.txt`) se hacen con la librería estándar de Java
-- **Herramienta de construcción**: compilación directa con `javac` (proyecto Java estándar, sin Maven/Gradle)
+- **Herramienta de construcción**: Maven (`pom.xml`) o compilación directa con `javac`
 
 ---
 
@@ -115,6 +115,51 @@ db.poolSize=10
 `db.properties` es local y no debe subirse al repositorio. TLS está activado
 por defecto; desactivarlo solo es aceptable para una instancia local aislada.
 
+Si MySQL se ejecuta en el contenedor de desarrollo `contenedor_mysql` con el
+puerto publicado `3307:3306`, configura `db.port=3307`; una instalación local
+de MySQL que escuche directamente en el puerto estándar usa `db.port=3306`.
+
+En servidores o entornos compartidos también se puede configurar la conexión
+sin crear `db.properties`, usando variables de entorno. Estas tienen prioridad
+sobre el archivo local:
+
+```bash
+export ERP_DB_HOST=localhost
+export ERP_DB_PORT=3306
+export ERP_DB_NAME=erp_little_horizons
+export ERP_DB_USER=erp_app
+export ERP_DB_PASSWORD='secreto-local-largo-y-privado'
+export ERP_DB_SSL=true
+export ERP_DB_VERIFY_SERVER_CERTIFICATE=true
+export ERP_DB_ALLOW_PUBLIC_KEY_RETRIEVAL=false
+export ERP_DB_POOL_SIZE=10
+```
+
+No se deben registrar, imprimir ni confirmar estas variables en la terminal o
+en archivos versionados.
+
+Para un entorno local también se puede definir el primer administrador en el
+`db.properties` ignorado por Git mediante `app.initialAdminUsername` y
+`app.initialAdminPassword`. La contraseña debe tener al menos 12 caracteres;
+las variables de entorno tienen prioridad sobre esos valores locales.
+
+### 6.2.1. Usuario dedicado de MySQL
+
+La aplicación debe conectarse con un usuario dedicado y con permisos limitados
+a la base de datos del ERP. Desde una sesión administrativa de MySQL, crea el
+usuario con una contraseña privada y reemplaza únicamente el marcador local:
+
+```sql
+CREATE USER IF NOT EXISTS 'erp_app'@'localhost'
+    IDENTIFIED BY 'REEMPLAZAR_POR_UNA_CONTRASENA_LOCAL_SEGURA';
+GRANT SELECT, INSERT, UPDATE, DELETE, EXECUTE
+    ON erp_little_horizons.* TO 'erp_app'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+Después configura la misma contraseña en `db.properties` o en
+`ERP_DB_PASSWORD`. No uses el usuario `root` desde la aplicación.
+
 ### 6.3. Instalación del driver JDBC
 
 El driver MySQL Connector/J ya está incluido en `lib/mysql-connector-j.jar`. No se requiere instalación adicional: se agrega al classpath al compilar y ejecutar (ver sección 7). Si usas un IDE, agrégalo como librería externa del proyecto (*Add External JARs* en Eclipse/IntelliJ, o en la lista de dependencias de NetBeans).
@@ -146,7 +191,10 @@ contraseña.
 
 ### 7.2. Abrir el proyecto en el IDE
 
-Importar la carpeta como proyecto Java estándar. La carpeta de código fuente es `src/`.
+Abrir la carpeta raíz en IntelliJ IDEA y aceptar la importación del archivo `pom.xml`.
+El proyecto configura automáticamente `src/` como código fuente, `tests/` como código
+de pruebas y `lib/mysql-connector-j.jar` como dependencia. También se puede importar
+como proyecto Java estándar; la carpeta de código fuente es `src/`.
 
 ### 7.3. Compilar
 
@@ -261,7 +309,7 @@ El flujo de una operación es siempre: **View → Controller → DAO → MySQL**
 
 ## 10. Funcionalidades Principales (por módulo)
 
-**1. Gestión de Estudiantes** — Registro completo con datos personales y médicos; acudientes con parentesco y responsable financiero; vinculación muchos-a-muchos (un acudiente, varios hijos); matrícula por grado y año (`Activa/Completada/Retirada`); baja lógica (estado `Retirado`) con borrado físico confirmado.
+**1. Gestión de Estudiantes** — Registro completo con datos personales y médicos; acudientes con parentesco, responsable financiero y tipos de documento `CC`, `Cédula de Extranjería`, `Pasaporte` y `PPT`; vinculación muchos-a-muchos (un acudiente, varios hijos); matrícula por grado y año (`Activa/Completada/Retirada`); baja lógica (estado `Retirado`) con borrado físico confirmado.
 
 **2. Gestión Académica** — Materias por grado con código único; inscripción por período validando matrícula activa; registro de notas por estudiante/materia/profesor/período con validación 0.0–5.0 a un decimal; promedios calculados con Stream API (por materia, por período y por curso); historial académico completo; asistencia diaria (`Presente/Ausente/Tardanza/Excusa Médica`) y reportes de patrones (>3 ausencias en una semana ISO).
 
@@ -301,7 +349,7 @@ _(Opcional — agregar capturas del menú principal, registro de notas, factura 
 - El **CUFE, el código QR y la resolución DIAN son simulados** (fines académicos): el CUFE es un hash SHA-256 y el QR se dibuja en ASCII. No existe conexión real con la DIAN.
 - Por instrucción del usuario, el reporte/factura se genera en **formato `.txt`**, no en PDF.
 - Las asignaciones persisten día y hora de clase y rechazan solapamientos del mismo profesor.
-- La autenticación usa usuarios, contraseñas PBKDF2 y roles de consola (`Administrador`, `Profesor`, `Secretaria`); los datos de contacto del cliente se redactan para roles no administradores.
+- La autenticación usa usuarios, contraseñas PBKDF2 y roles de consola (`Administrador`, `Profesor`, `Secretaria`); los datos de contacto y documentos del cliente se redactan para roles no administradores.
 - La aplicación requiere consola con soporte UTF-8 para mostrar correctamente los caracteres de caja (`╔ ═ ╚`) y las tildes.
 - `docs/database.sql` no elimina la base de datos. El reset destructivo está
   separado en `docs/database-reset.sql` y no debe ejecutarse sobre datos reales.
@@ -315,7 +363,8 @@ _(Opcional — agregar capturas del menú principal, registro de notas, factura 
 - El pool JDBC está acotado por `db.poolSize` (1..50); estudiantes y acudientes usan
   paginación de hasta 100 registros por página.
 - Las migraciones incrementales se encuentran en `docs/migrations/`; no se
-  deben editar datos productivos ejecutando el script de instalación.
+  deben editar datos productivos ejecutando el script de instalación. `V003`
+  refuerza la obligación de un acudiente principal por estudiante.
 - Paginación de reportes masivos, auditoría centralizada y pruebas de carga.
 - Pruebas de integración con MySQL y migración progresiva a JUnit 5.
 

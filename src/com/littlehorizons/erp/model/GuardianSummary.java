@@ -1,5 +1,7 @@
 package com.littlehorizons.erp.model;
 
+import com.littlehorizons.erp.util.PrivacyUtils;
+
 /**
  * Lightweight read-only projection of a guardian, used by the financial module
  * to pick a guardian and to fill the client block of electronic invoices.
@@ -69,8 +71,13 @@ public class GuardianSummary {
         return documentType + " " + documentNumber;
     }
 
+    /** Document description safe for non-administrative console output. */
+    public String getMaskedDocumentDescription() {
+        return documentType + " " + PrivacyUtils.maskIdentifier(documentNumber);
+    }
+
     @Override
     public String toString() {
-        return String.format("#%d %s (%s)", id, fullName, getDocumentDescription());
+        return String.format("#%d %s (%s)", id, fullName, getMaskedDocumentDescription());
     }
 }

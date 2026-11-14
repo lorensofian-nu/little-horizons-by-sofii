@@ -70,40 +70,41 @@ public class StudentLoanDaoImpl implements StudentLoanDao {
                 + "VALUES (?, ?, ?, ?, 'Activo', ?)";
         String resourceSql = "UPDATE recursos SET estado_recurso = 'Prestado' "
                 + "WHERE id_recurso = ? AND estado_recurso = 'Disponible'";
-        Connection connection = DatabaseConnection.getInstance().getConnection();
-        try {
-            connection.setAutoCommit(false);
-            int loanId;
-            try (PreparedStatement statement =
-                         connection.prepareStatement(insertSql, Statement.RETURN_GENERATED_KEYS)) {
-                statement.setInt(1, loan.getResourceId());
-                statement.setInt(2, loan.getStudentId());
-                statement.setDate(3, Date.valueOf(loan.getLoanDate()));
-                statement.setDate(4, Date.valueOf(loan.getExpectedReturnDate()));
-                statement.setString(5, loan.getObservations());
-                statement.executeUpdate();
-                try (ResultSet keys = statement.getGeneratedKeys()) {
-                    if (!keys.next()) {
-                        throw new SQLException("Loan insert did not return a generated key.");
+        try (Connection connection = DatabaseConnection.getInstance().getConnection()) {
+            try {
+                connection.setAutoCommit(false);
+                int loanId;
+                try (PreparedStatement statement =
+                             connection.prepareStatement(insertSql, Statement.RETURN_GENERATED_KEYS)) {
+                    statement.setInt(1, loan.getResourceId());
+                    statement.setInt(2, loan.getStudentId());
+                    statement.setDate(3, Date.valueOf(loan.getLoanDate()));
+                    statement.setDate(4, Date.valueOf(loan.getExpectedReturnDate()));
+                    statement.setString(5, loan.getObservations());
+                    statement.executeUpdate();
+                    try (ResultSet keys = statement.getGeneratedKeys()) {
+                        if (!keys.next()) {
+                            throw new SQLException("Loan insert did not return a generated key.");
+                        }
+                        loanId = keys.getInt(1);
+                        loan.setId(loanId);
                     }
-                    loanId = keys.getInt(1);
-                    loan.setId(loanId);
                 }
-            }
-            try (PreparedStatement resourceStatement = connection.prepareStatement(resourceSql)) {
-                resourceStatement.setInt(1, loan.getResourceId());
-                if (resourceStatement.executeUpdate() != 1) {
-                    connection.rollback();
-                    throw new SQLException("The resource is no longer available for loan.");
+                try (PreparedStatement resourceStatement = connection.prepareStatement(resourceSql)) {
+                    resourceStatement.setInt(1, loan.getResourceId());
+                    if (resourceStatement.executeUpdate() != 1) {
+                        connection.rollback();
+                        throw new SQLException("The resource is no longer available for loan.");
+                    }
                 }
+                connection.commit();
+                return loanId;
+            } catch (SQLException exception) {
+                safeRollback(connection, "register student loan", exception);
+                throw exception;
+            } finally {
+                restoreAutoCommit(connection, "student loan transaction");
             }
-            connection.commit();
-            return loanId;
-        } catch (SQLException exception) {
-            safeRollback(connection, "register student loan", exception);
-            throw exception;
-        } finally {
-            closeConnection(connection);
         }
     }
 
@@ -115,41 +116,42 @@ public class StudentLoanDaoImpl implements StudentLoanDao {
                 + "estado_prestamo = 'Devuelto', observaciones = ? "
                 + "WHERE id_prestamo = ? AND estado_prestamo = 'Activo'";
         String updateResourceSql = "UPDATE recursos SET estado_recurso = 'Disponible' WHERE id_recurso = ?";
-        Connection connection = DatabaseConnection.getInstance().getConnection();
-        try {
-            connection.setAutoCommit(false);
-            int resourceId;
-            try (PreparedStatement selectStatement = connection.prepareStatement(selectSql)) {
-                selectStatement.setInt(1, loanId);
-                try (ResultSet resultSet = selectStatement.executeQuery()) {
-                    if (!resultSet.next()
-                            || !LoanState.ACTIVE.getDbValue().equals(resultSet.getString("estado_prestamo"))) {
+        try (Connection connection = DatabaseConnection.getInstance().getConnection()) {
+            try {
+                connection.setAutoCommit(false);
+                int resourceId;
+                try (PreparedStatement selectStatement = connection.prepareStatement(selectSql)) {
+                    selectStatement.setInt(1, loanId);
+                    try (ResultSet resultSet = selectStatement.executeQuery()) {
+                        if (!resultSet.next()
+                                || !LoanState.ACTIVE.getDbValue().equals(resultSet.getString("estado_prestamo"))) {
+                            connection.rollback();
+                            return false;
+                        }
+                        resourceId = resultSet.getInt("id_recurso");
+                    }
+                }
+                try (PreparedStatement loanStatement = connection.prepareStatement(updateLoanSql)) {
+                    loanStatement.setDate(1, Date.valueOf(realReturnDate));
+                    loanStatement.setString(2, observations);
+                    loanStatement.setInt(3, loanId);
+                    if (loanStatement.executeUpdate() != 1) {
                         connection.rollback();
                         return false;
                     }
-                    resourceId = resultSet.getInt("id_recurso");
                 }
-            }
-            try (PreparedStatement loanStatement = connection.prepareStatement(updateLoanSql)) {
-                loanStatement.setDate(1, Date.valueOf(realReturnDate));
-                loanStatement.setString(2, observations);
-                loanStatement.setInt(3, loanId);
-                if (loanStatement.executeUpdate() != 1) {
-                    connection.rollback();
-                    return false;
+                try (PreparedStatement resourceStatement = connection.prepareStatement(updateResourceSql)) {
+                    resourceStatement.setInt(1, resourceId);
+                    resourceStatement.executeUpdate();
                 }
+                connection.commit();
+                return true;
+            } catch (SQLException exception) {
+                safeRollback(connection, "register student loan return", exception);
+                throw exception;
+            } finally {
+                restoreAutoCommit(connection, "student loan return transaction");
             }
-            try (PreparedStatement resourceStatement = connection.prepareStatement(updateResourceSql)) {
-                resourceStatement.setInt(1, resourceId);
-                resourceStatement.executeUpdate();
-            }
-            connection.commit();
-            return true;
-        } catch (SQLException exception) {
-            safeRollback(connection, "register student loan return", exception);
-            throw exception;
-        } finally {
-            closeConnection(connection);
         }
     }
 
@@ -326,12 +328,11 @@ public class StudentLoanDaoImpl implements StudentLoanDao {
         }
     }
 
-    private void closeConnection(Connection connection) {
+    private void restoreAutoCommit(Connection connection, String context) {
         try {
             connection.setAutoCommit(true);
-            connection.close();
         } catch (SQLException closeException) {
-            LoggerUtil.logError("Closing student loan transaction connection", closeException);
+            LoggerUtil.logError("Restoring auto-commit for " + context, closeException);
         }
     }
 

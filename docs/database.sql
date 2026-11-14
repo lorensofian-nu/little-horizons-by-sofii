@@ -28,7 +28,11 @@ CREATE TABLE schema_migrations (
     applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB COMMENT='Applied database migration versions';
 INSERT INTO schema_migrations (version, description)
-VALUES ('V001', 'Baseline Little Horizons schema');
+VALUES
+    ('V001', 'Baseline Little Horizons schema'),
+    ('V002', 'Security tables, document sequences and TXT invoice column'),
+    ('V003', 'Primary guardian and student relationship integrity'),
+    ('V004', 'Guardian document type expansion');
 
 CREATE TABLE secuencias_documento (
     nombre_secuencia VARCHAR(80) PRIMARY KEY,
@@ -61,6 +65,7 @@ CREATE TABLE estudiantes (
     condiciones_medicas TEXT,
     fecha_ingreso DATE NOT NULL,
     estado ENUM('Activo', 'Graduado', 'Retirado', 'Suspendido') DEFAULT 'Activo',
+    id_acudiente_principal INT,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_documento (tipo_documento, numero_documento),
@@ -70,7 +75,7 @@ CREATE TABLE estudiantes (
 
 CREATE TABLE acudientes (
     id_acudiente INT AUTO_INCREMENT PRIMARY KEY,
-    tipo_documento ENUM('CC', 'CE', 'Pasaporte') NOT NULL DEFAULT 'CC',
+    tipo_documento ENUM('CC', 'CE', 'Pasaporte', 'PPT') NOT NULL DEFAULT 'CC',
     numero_documento VARCHAR(20) NOT NULL UNIQUE,
     primer_nombre VARCHAR(100) NOT NULL,
     segundo_nombre VARCHAR(100),
@@ -94,12 +99,15 @@ CREATE TABLE estudiante_acudiente (
     id_acudiente INT NOT NULL,
     es_principal BOOLEAN DEFAULT FALSE COMMENT 'Acudiente principal para comunicaciones',
     es_contacto_emergencia BOOLEAN DEFAULT TRUE COMMENT 'Disponible para emergencias',
+    id_estudiante_principal_unico INT GENERATED ALWAYS AS
+        (CASE WHEN es_principal THEN id_estudiante ELSE NULL END) STORED,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id_estudiante, id_acudiente),
     FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
     FOREIGN KEY (id_acudiente) REFERENCES acudientes(id_acudiente) ON DELETE RESTRICT,
     INDEX idx_estudiante (id_estudiante),
-    INDEX idx_acudiente (id_acudiente)
+    INDEX idx_acudiente (id_acudiente),
+    UNIQUE KEY uq_estudiante_guardian_principal (id_estudiante_principal_unico)
 ) ENGINE=InnoDB COMMENT='Relación entre estudiantes y sus acudientes';
 
 CREATE TABLE matriculas (
@@ -322,7 +330,7 @@ CREATE TABLE conceptos_pago (
 CREATE TABLE pagos (
     id_pago INT AUTO_INCREMENT PRIMARY KEY,
     id_estudiante INT NOT NULL,
-    id_acudiente INT COMMENT 'Acudiente que realizó el pago',
+    id_acudiente INT NOT NULL COMMENT 'Acudiente que realizó el pago',
     id_concepto INT NOT NULL,
     monto_pagado DECIMAL(10,2) NOT NULL,
     fecha_pago DATE NOT NULL,
@@ -333,7 +341,7 @@ CREATE TABLE pagos (
     notas TEXT,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
-    FOREIGN KEY (id_acudiente) REFERENCES acudientes(id_acudiente),
+    FOREIGN KEY (id_acudiente) REFERENCES acudientes(id_acudiente) ON DELETE RESTRICT,
     FOREIGN KEY (id_concepto) REFERENCES conceptos_pago(id_concepto),
     CHECK (monto_pagado >= 0),
     INDEX idx_estudiante_fecha (id_estudiante, fecha_pago),
@@ -347,9 +355,9 @@ CREATE TABLE facturas (
     numero_factura VARCHAR(50) NOT NULL UNIQUE COMMENT 'Número consecutivo de factura',
     id_pago INT NOT NULL COMMENT 'Pago asociado a esta factura',
     fecha_emision DATE NOT NULL,
-    cufe VARCHAR(100) COMMENT 'Código Único de Factura Electrónica (simulado)',
-    nombre_archivo_txt VARCHAR(255) COMMENT 'Nombre del archivo de factura generado (formato .txt)',
-    ruta_archivo VARCHAR(500) COMMENT 'Ruta completa donde se guardó el archivo',
+    cufe VARCHAR(100) NOT NULL COMMENT 'Código Único de Factura Electrónica (simulado)',
+    nombre_archivo_txt VARCHAR(255) NOT NULL COMMENT 'Nombre del archivo de factura generado (formato .txt)',
+    ruta_archivo VARCHAR(500) NOT NULL COMMENT 'Ruta completa donde se guardó el archivo',
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_pago) REFERENCES pagos(id_pago) ON DELETE RESTRICT,
     UNIQUE KEY factura_por_pago (id_pago),
@@ -638,6 +646,93 @@ INSERT INTO estudiante_acudiente (id_estudiante, id_acudiente, es_principal, es_
 (23, 16, TRUE,  TRUE),
 (27, 17, TRUE,  TRUE),
 (30, 18, TRUE,  TRUE);
+
+-- Every student must have one persisted primary guardian. The foreign key
+-- protects the guardian identity and the trigger keeps the relation table in
+-- sync for direct database inserts as well as application inserts.
+UPDATE estudiantes e
+JOIN estudiante_acudiente ea
+  ON ea.id_estudiante = e.id_estudiante AND ea.es_principal = TRUE
+SET e.id_acudiente_principal = ea.id_acudiente;
+
+ALTER TABLE estudiantes
+    MODIFY COLUMN id_acudiente_principal INT NOT NULL,
+    ADD CONSTRAINT fk_estudiante_acudiente_principal
+        FOREIGN KEY (id_acudiente_principal)
+        REFERENCES acudientes(id_acudiente)
+        ON DELETE RESTRICT;
+
+DELIMITER $$
+CREATE TRIGGER trg_estudiantes_after_insert_guardian
+AFTER INSERT ON estudiantes
+FOR EACH ROW
+BEGIN
+    INSERT INTO estudiante_acudiente
+        (id_estudiante, id_acudiente, es_principal, es_contacto_emergencia)
+    VALUES (NEW.id_estudiante, NEW.id_acudiente_principal, TRUE, TRUE);
+END$$
+
+CREATE TRIGGER trg_estudiantes_after_update_guardian
+AFTER UPDATE ON estudiantes
+FOR EACH ROW
+BEGIN
+    IF NOT (NEW.id_acudiente_principal <=> OLD.id_acudiente_principal) THEN
+        UPDATE estudiante_acudiente
+        SET es_principal = FALSE
+        WHERE id_estudiante = NEW.id_estudiante
+          AND es_principal = TRUE
+          AND id_acudiente <> NEW.id_acudiente_principal;
+
+        INSERT INTO estudiante_acudiente
+            (id_estudiante, id_acudiente, es_principal, es_contacto_emergencia)
+        VALUES (NEW.id_estudiante, NEW.id_acudiente_principal, TRUE, TRUE)
+        ON DUPLICATE KEY UPDATE
+            es_principal = TRUE,
+            es_contacto_emergencia = TRUE;
+    END IF;
+END$$
+
+CREATE TRIGGER trg_student_guardian_after_insert_primary
+AFTER INSERT ON estudiante_acudiente
+FOR EACH ROW
+BEGIN
+    IF NEW.es_principal = TRUE THEN
+        UPDATE estudiantes
+        SET id_acudiente_principal = NEW.id_acudiente
+        WHERE id_estudiante = NEW.id_estudiante
+          AND id_acudiente_principal <> NEW.id_acudiente;
+    END IF;
+END$$
+
+CREATE TRIGGER trg_student_guardian_before_update_primary
+BEFORE UPDATE ON estudiante_acudiente
+FOR EACH ROW
+BEGIN
+    IF OLD.es_principal = TRUE AND NEW.es_principal = FALSE
+       AND OLD.id_acudiente = (
+           SELECT id_acudiente_principal
+           FROM estudiantes
+           WHERE id_estudiante = OLD.id_estudiante
+       ) THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Assign another primary guardian before demoting this one';
+    END IF;
+END$$
+
+CREATE TRIGGER trg_student_guardian_before_delete_primary
+BEFORE DELETE ON estudiante_acudiente
+FOR EACH ROW
+BEGIN
+    IF OLD.id_acudiente = (
+        SELECT id_acudiente_principal
+        FROM estudiantes
+        WHERE id_estudiante = OLD.id_estudiante
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'A student must keep a primary guardian';
+    END IF;
+END$$
+DELIMITER ;
 
 -- ----------------------------------------------------------------------------
 -- Enrollments: every active student is enrolled in the 2026 academic year,
@@ -1246,7 +1341,7 @@ UNION ALL SELECT 'recursos',               COUNT(*) FROM recursos
 UNION ALL SELECT 'prestamos_estudiante',   COUNT(*) FROM prestamos_estudiante
 UNION ALL SELECT 'prestamos_profesor',     COUNT(*) FROM prestamos_profesor
 UNION ALL SELECT 'usuarios',               COUNT(*) FROM usuarios
-UNION ALL SELECT 'TOTAL',                  (SELECT COUNT(*) FROM grados
+UNION ALL SELECT 'TOTAL',                  ((SELECT COUNT(*) FROM grados)
     + (SELECT COUNT(*) FROM estudiantes) + (SELECT COUNT(*) FROM acudientes)
     + (SELECT COUNT(*) FROM estudiante_acudiente) + (SELECT COUNT(*) FROM matriculas)
     + (SELECT COUNT(*) FROM materias) + (SELECT COUNT(*) FROM profesores)

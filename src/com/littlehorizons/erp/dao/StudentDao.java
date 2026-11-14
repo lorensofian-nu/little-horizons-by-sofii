@@ -13,7 +13,7 @@ import java.util.List;
  */
 public interface StudentDao {
 
-    /** Inserts a student and returns the generated key ({@code id_estudiante}). */
+    /** Inserts a student with a required primary guardian and returns its generated key. */
     int save(Student student) throws SQLException;
 
     Student findById(int id) throws SQLException;

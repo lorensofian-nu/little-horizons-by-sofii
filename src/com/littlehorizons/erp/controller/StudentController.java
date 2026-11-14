@@ -1,8 +1,10 @@
 package com.littlehorizons.erp.controller;
 
+import com.littlehorizons.erp.dao.GuardianDao;
 import com.littlehorizons.erp.dao.StudentDao;
 import com.littlehorizons.erp.model.DocumentType;
 import com.littlehorizons.erp.model.Gender;
+import com.littlehorizons.erp.model.Guardian;
 import com.littlehorizons.erp.model.Student;
 import com.littlehorizons.erp.model.StudentStatus;
 import com.littlehorizons.erp.model.StudentSummary;
@@ -24,9 +26,15 @@ import java.util.List;
 public class StudentController {
 
     private final StudentDao studentDao;
+    private final GuardianDao guardianDao;
 
     public StudentController(StudentDao studentDao) {
+        this(studentDao, null);
+    }
+
+    public StudentController(StudentDao studentDao, GuardianDao guardianDao) {
         this.studentDao = studentDao;
+        this.guardianDao = guardianDao;
     }
 
     /** Full student registration form. */
@@ -43,6 +51,11 @@ public class StudentController {
                         + " already exists.");
                 return;
             }
+            Integer primaryGuardianId = selectPrimaryGuardianId();
+            if (primaryGuardianId == null) {
+                return;
+            }
+            student.setPrimaryGuardianId(primaryGuardianId);
             int id = studentDao.save(student);
             ConsoleUtils.printSuccess("Student registered with id " + id + ": " + student.getFullName());
             LoggerUtil.logInfo("Student created: id=" + id);
@@ -262,7 +275,35 @@ public class StudentController {
         student.setMedicalConditions(medicalConditions);
         student.setAdmissionDate(admissionDate);
         student.setStatus(status);
+        student.setPrimaryGuardianId(current == null ? null : current.getPrimaryGuardianId());
         return student;
+    }
+
+    /** Requires a guardian before a new student can be persisted. */
+    private Integer selectPrimaryGuardianId() throws SQLException {
+        if (guardianDao == null) {
+            ConsoleUtils.printError("A guardian data source is required to register a student.");
+            return null;
+        }
+        List<Guardian> guardians = guardianDao.findAll();
+        if (guardians.isEmpty()) {
+            ConsoleUtils.printError("Register at least one guardian before creating a student.");
+            return null;
+        }
+        System.out.println("  Select the primary guardian:");
+        guardians.forEach(guardian -> System.out.println("    " + guardian));
+        int guardianId = ConsoleUtils.readInt("Guardian id (0 = cancel): ",
+                1, Integer.MAX_VALUE, 0);
+        if (guardianId == 0) {
+            System.out.println("  Operation cancelled.");
+            return null;
+        }
+        boolean exists = guardians.stream().anyMatch(guardian -> guardian.getId() == guardianId);
+        if (!exists) {
+            ConsoleUtils.printError("Guardian with id " + guardianId + " not found.");
+            return null;
+        }
+        return guardianId;
     }
 
     private String fallbackHint(String current) {

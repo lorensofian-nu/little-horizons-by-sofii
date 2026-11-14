@@ -11,7 +11,7 @@ public final class AppConstants {
     public static final String COLLEGE_ADDRESS = "Calle 45 # 23-17, Barrio La Esperanza";
     public static final String COLLEGE_CITY = "Bogotá D.C., Colombia";
     public static final String COLLEGE_PHONE = "(601) 745 8899";
-    public static final String COLLEGE_EMAIL = "facturacion@littlehorizons.edu.co";
+    public static final String COLLEGE_EMAIL = "facturacion@example.invalid";
     public static final String DIAN_RESOLUTION =
             "Resolución DIAN 18764000001234 de 2024 - Régimen de facturación electrónica "
             + "(habilitación simulada con fines académicos)";

@@ -10,14 +10,17 @@ import java.util.Properties;
 /**
  * Singleton in charge of creating JDBC connections to the MySQL database.
  *
- * <p>Connection settings are read once from the {@code db.properties} file located
- * at the project root. Missing required settings fail fast with a clear error;
- * no default credentials are ever assumed. Callers obtain a bounded pooled
+ * <p>Connection settings are read once from the local {@code db.properties} file
+ * or from {@code ERP_DB_*} environment variables. Environment variables have
+ * priority, so deployment secrets can remain outside the repository. Missing
+ * required settings fail fast with a clear error; no default credentials are
+ * ever assumed. Callers obtain a bounded pooled
  * {@link Connection} on each request and must return it using try-with-resources.</p>
  */
 public final class DatabaseConnection {
 
     private static final String CONFIG_FILE = "db.properties";
+    private static final String ENV_PREFIX = "ERP_DB_";
     private static final String JDBC_URL_TEMPLATE =
             "jdbc:mysql://%s:%s/%s?useSSL=%s&verifyServerCertificate=%s"
             + "&allowPublicKeyRetrieval=%s&serverTimezone=America/Bogota"
@@ -136,6 +139,30 @@ public final class DatabaseConnection {
         } catch (IOException exception) {
             LoggerUtil.logError("Could not read " + CONFIG_FILE, exception);
         }
+        applyEnvironmentOverrides(properties);
         return properties;
+    }
+
+    /**
+     * Applies environment variables after the local file so deployment secrets
+     * can stay outside the repository. For example, {@code db.password} maps
+     * to {@code ERP_DB_PASSWORD}.
+     */
+    private void applyEnvironmentOverrides(Properties properties) {
+        String[] keys = {
+            "db.host", "db.port", "db.name", "db.user", "db.password",
+            "db.ssl", "db.verifyServerCertificate", "db.allowPublicKeyRetrieval",
+            "db.poolSize"
+        };
+        for (String key : keys) {
+            String propertyName = key.substring(3).replace('.', '_');
+            String environmentKey = ENV_PREFIX + propertyName
+                    .replaceAll("([a-z])([A-Z])", "$1_$2")
+                    .toUpperCase(java.util.Locale.ROOT);
+            String value = System.getenv(environmentKey);
+            if (value != null && !value.isBlank()) {
+                properties.setProperty(key, value.trim());
+            }
+        }
     }
 }

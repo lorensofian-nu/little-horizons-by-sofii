@@ -46,6 +46,7 @@ CREATE TABLE estudiantes (
     condiciones_medicas TEXT,
     fecha_ingreso DATE NOT NULL,
     estado ENUM('Activo', 'Graduado', 'Retirado', 'Suspendido') DEFAULT 'Activo',
+    id_acudiente_principal INT,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_documento (tipo_documento, numero_documento),
@@ -56,7 +57,7 @@ CREATE TABLE estudiantes (
 -- Tabla de acudientes/tutores legales
 CREATE TABLE acudientes (
     id_acudiente INT AUTO_INCREMENT PRIMARY KEY,
-    tipo_documento ENUM('CC', 'CE', 'Pasaporte') NOT NULL DEFAULT 'CC',
+    tipo_documento ENUM('CC', 'CE', 'Pasaporte', 'PPT') NOT NULL DEFAULT 'CC',
     numero_documento VARCHAR(20) NOT NULL UNIQUE,
     primer_nombre VARCHAR(100) NOT NULL,
     segundo_nombre VARCHAR(100),
@@ -81,13 +82,95 @@ CREATE TABLE estudiante_acudiente (
     id_acudiente INT NOT NULL,
     es_principal BOOLEAN DEFAULT FALSE COMMENT 'Acudiente principal para comunicaciones',
     es_contacto_emergencia BOOLEAN DEFAULT TRUE COMMENT 'Disponible para emergencias',
+    id_estudiante_principal_unico INT GENERATED ALWAYS AS
+        (CASE WHEN es_principal THEN id_estudiante ELSE NULL END) STORED,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id_estudiante, id_acudiente),
     FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
     FOREIGN KEY (id_acudiente) REFERENCES acudientes(id_acudiente) ON DELETE RESTRICT,
     INDEX idx_estudiante (id_estudiante),
-    INDEX idx_acudiente (id_acudiente)
+    INDEX idx_acudiente (id_acudiente),
+    UNIQUE KEY uq_estudiante_guardian_principal (id_estudiante_principal_unico)
 ) ENGINE=InnoDB COMMENT='Relación entre estudiantes y sus acudientes';
+
+ALTER TABLE estudiantes
+    MODIFY COLUMN id_acudiente_principal INT NOT NULL,
+    ADD CONSTRAINT fk_estudiante_acudiente_principal
+        FOREIGN KEY (id_acudiente_principal)
+        REFERENCES acudientes(id_acudiente)
+        ON DELETE RESTRICT;
+
+DELIMITER $$
+CREATE TRIGGER trg_estudiantes_after_insert_guardian
+AFTER INSERT ON estudiantes
+FOR EACH ROW
+BEGIN
+    INSERT INTO estudiante_acudiente
+        (id_estudiante, id_acudiente, es_principal, es_contacto_emergencia)
+    VALUES (NEW.id_estudiante, NEW.id_acudiente_principal, TRUE, TRUE);
+END$$
+
+CREATE TRIGGER trg_estudiantes_after_update_guardian
+AFTER UPDATE ON estudiantes
+FOR EACH ROW
+BEGIN
+    IF NOT (NEW.id_acudiente_principal <=> OLD.id_acudiente_principal) THEN
+        UPDATE estudiante_acudiente
+        SET es_principal = FALSE
+        WHERE id_estudiante = NEW.id_estudiante
+          AND es_principal = TRUE
+          AND id_acudiente <> NEW.id_acudiente_principal;
+
+        INSERT INTO estudiante_acudiente
+            (id_estudiante, id_acudiente, es_principal, es_contacto_emergencia)
+        VALUES (NEW.id_estudiante, NEW.id_acudiente_principal, TRUE, TRUE)
+        ON DUPLICATE KEY UPDATE
+            es_principal = TRUE,
+            es_contacto_emergencia = TRUE;
+    END IF;
+END$$
+
+CREATE TRIGGER trg_student_guardian_after_insert_primary
+AFTER INSERT ON estudiante_acudiente
+FOR EACH ROW
+BEGIN
+    IF NEW.es_principal = TRUE THEN
+        UPDATE estudiantes
+        SET id_acudiente_principal = NEW.id_acudiente
+        WHERE id_estudiante = NEW.id_estudiante
+          AND id_acudiente_principal <> NEW.id_acudiente;
+    END IF;
+END$$
+
+CREATE TRIGGER trg_student_guardian_before_update_primary
+BEFORE UPDATE ON estudiante_acudiente
+FOR EACH ROW
+BEGIN
+    IF OLD.es_principal = TRUE AND NEW.es_principal = FALSE
+       AND OLD.id_acudiente = (
+           SELECT id_acudiente_principal
+           FROM estudiantes
+           WHERE id_estudiante = OLD.id_estudiante
+       ) THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Assign another primary guardian before demoting this one';
+    END IF;
+END$$
+
+CREATE TRIGGER trg_student_guardian_before_delete_primary
+BEFORE DELETE ON estudiante_acudiente
+FOR EACH ROW
+BEGIN
+    IF OLD.id_acudiente = (
+        SELECT id_acudiente_principal
+        FROM estudiantes
+        WHERE id_estudiante = OLD.id_estudiante
+    ) THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'A student must keep a primary guardian';
+    END IF;
+END$$
+DELIMITER ;
 
 -- Tabla de matrículas (historial de grados por año)
 CREATE TABLE matriculas (
@@ -316,7 +399,7 @@ CREATE TABLE conceptos_pago (
 CREATE TABLE pagos (
     id_pago INT AUTO_INCREMENT PRIMARY KEY,
     id_estudiante INT NOT NULL,
-    id_acudiente INT COMMENT 'Acudiente que realizó el pago',
+    id_acudiente INT NOT NULL COMMENT 'Acudiente que realizó el pago',
     id_concepto INT NOT NULL,
     monto_pagado DECIMAL(10,2) NOT NULL,
     fecha_pago DATE NOT NULL,
@@ -327,7 +410,7 @@ CREATE TABLE pagos (
     notas TEXT,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
-    FOREIGN KEY (id_acudiente) REFERENCES acudientes(id_acudiente),
+    FOREIGN KEY (id_acudiente) REFERENCES acudientes(id_acudiente) ON DELETE RESTRICT,
     FOREIGN KEY (id_concepto) REFERENCES conceptos_pago(id_concepto),
     INDEX idx_estudiante_fecha (id_estudiante, fecha_pago),
     INDEX idx_concepto (id_concepto),
@@ -341,9 +424,9 @@ CREATE TABLE facturas (
     numero_factura VARCHAR(50) NOT NULL UNIQUE COMMENT 'Número consecutivo de factura',
     id_pago INT NOT NULL COMMENT 'Pago asociado a esta factura',
     fecha_emision DATE NOT NULL,
-    cufe VARCHAR(100) COMMENT 'Código Único de Factura Electrónica (simulado)',
-    nombre_archivo_txt VARCHAR(255) COMMENT 'Nombre del archivo TXT generado',
-    ruta_archivo VARCHAR(500) COMMENT 'Ruta completa donde se guardó el TXT',
+    cufe VARCHAR(100) NOT NULL COMMENT 'Código Único de Factura Electrónica (simulado)',
+    nombre_archivo_txt VARCHAR(255) NOT NULL COMMENT 'Nombre del archivo TXT generado',
+    ruta_archivo VARCHAR(500) NOT NULL COMMENT 'Ruta completa donde se guardó el TXT',
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_pago) REFERENCES pagos(id_pago) ON DELETE RESTRICT,
     INDEX idx_numero_factura (numero_factura),

@@ -36,7 +36,7 @@ public class FinancialTransactionService {
      */
     public Invoice registerPayment(Payment payment, PaymentConcept concept,
                                    GuardianSummary guardian) throws SQLException, IOException {
-        return registerPayment(payment, concept, guardian, true);
+        return registerPayment(payment, concept, guardian, false);
     }
 
     public Invoice registerPayment(Payment payment, PaymentConcept concept,

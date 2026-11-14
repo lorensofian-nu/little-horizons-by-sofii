@@ -92,7 +92,7 @@ public final class InvoiceGenerator {
      */
     public static void writeInvoiceFile(Invoice invoice, Payment payment, PaymentConcept concept,
                                         GuardianSummary client) throws IOException {
-        writeInvoiceFile(invoice, payment, concept, client, true);
+        writeInvoiceFile(invoice, payment, concept, client, false);
     }
 
     /** Writes an invoice with optional client contact details. */
@@ -164,7 +164,7 @@ public final class InvoiceGenerator {
      */
     public static String rebuildContent(Payment payment, PaymentConcept concept, GuardianSummary client,
                                         String invoiceNumber, LocalDate issueDate, String cufe) {
-        return rebuildContent(payment, concept, client, invoiceNumber, issueDate, cufe, true);
+        return rebuildContent(payment, concept, client, invoiceNumber, issueDate, cufe, false);
     }
 
     /** Rebuilds content while applying the current user's client-data policy. */
@@ -173,6 +173,16 @@ public final class InvoiceGenerator {
                                         boolean includeSensitiveClientData) {
         return buildContent(payment, concept, client, invoiceNumber, issueDate, cufe,
                 includeSensitiveClientData);
+    }
+
+    /** Redacts sensitive client fields from invoices created before role-aware output. */
+    public static String redactSensitiveClientData(String content) {
+        if (content == null || content.isEmpty()) {
+            return content;
+        }
+        return content
+                .replaceAll("(?m)^Dirección:\\s+.*$", "Dirección:   [REDACTADA]")
+                .replaceAll("(?m)^Documento:\\s+.*$", "Documento:   [REDACTADO]");
     }
 
     /** Simulated CUFE: SHA-256 of {@code numeroFactura|NIT|fechaEmision(ISO)}. */
@@ -225,7 +235,10 @@ public final class InvoiceGenerator {
         lines.add("CLIENTE");
         if (client != null) {
             lines.add("Nombre:      " + client.getFullName());
-            lines.add("Documento:   " + client.getDocumentDescription());
+            String document = includeSensitiveClientData
+                    ? client.getDocumentDescription()
+                    : client.getMaskedDocumentDescription();
+            lines.add("Documento:   " + document);
             String address = client.getAddress() == null || client.getAddress().isBlank()
                     ? "No registrada" : client.getAddress();
             lines.add("Dirección:   " + (includeSensitiveClientData ? address : "[REDACTADA]"));

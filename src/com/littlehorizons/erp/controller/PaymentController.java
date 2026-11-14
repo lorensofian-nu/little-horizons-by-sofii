@@ -283,8 +283,11 @@ public class PaymentController {
             return null;
         }
         System.out.println("  Guardians:");
+        boolean showFullDocument = userRole.canViewSensitiveClientData();
         guardians.forEach(guardian -> System.out.printf("    %d. %s (%s)%n",
-                guardian.getId(), guardian.getFullName(), guardian.getDocumentDescription()));
+                guardian.getId(), guardian.getFullName(), showFullDocument
+                        ? guardian.getDocumentDescription()
+                        : guardian.getMaskedDocumentDescription()));
         int guardianId = ConsoleUtils.readInt("Guardian id (0 = skip / cancel): ", 1, Integer.MAX_VALUE, 0);
         if (guardianId == 0) {
             return null;
@@ -318,8 +321,7 @@ public class PaymentController {
             System.out.println();
             String content = Files.readString(filePath, java.nio.charset.StandardCharsets.UTF_8);
             if (!userRole.canViewSensitiveClientData()) {
-                content = content.replaceAll("(?m)^Dirección:\\s+.*$",
-                        "Dirección:   [REDACTADA]");
+                content = InvoiceGenerator.redactSensitiveClientData(content);
             }
             System.out.println(content);
         } catch (IOException exception) {

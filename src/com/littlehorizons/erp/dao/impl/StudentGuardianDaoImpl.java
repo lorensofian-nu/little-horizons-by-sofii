@@ -28,6 +28,9 @@ public class StudentGuardianDaoImpl implements StudentGuardianDao {
     private static final String SQL_EXISTS =
             "SELECT 1 FROM estudiante_acudiente WHERE id_estudiante = ? AND id_acudiente = ?";
 
+    private static final String SQL_SET_PRIMARY =
+            "UPDATE estudiantes SET id_acudiente_principal = ? WHERE id_estudiante = ?";
+
     private static final String SQL_GUARDIANS_OF_STUDENT =
             "SELECT ea.id_estudiante, ea.id_acudiente, ea.es_principal, ea.es_contacto_emergencia, "
             + "ea.fecha_creacion, a.primer_nombre, a.segundo_nombre, a.primer_apellido, "
@@ -43,13 +46,33 @@ public class StudentGuardianDaoImpl implements StudentGuardianDao {
 
     @Override
     public boolean assign(StudentGuardianLink link) throws SQLException {
-        try (Connection connection = DatabaseConnection.getInstance().getConnection();
-             PreparedStatement statement = connection.prepareStatement(SQL_ASSIGN)) {
-            statement.setInt(1, link.getStudentId());
-            statement.setInt(2, link.getGuardianId());
-            statement.setBoolean(3, link.isPrimaryContact());
-            statement.setBoolean(4, link.isEmergencyContact());
-            return statement.executeUpdate() > 0;
+        try (Connection connection = DatabaseConnection.getInstance().getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement statement = connection.prepareStatement(SQL_ASSIGN)) {
+                    statement.setInt(1, link.getStudentId());
+                    statement.setInt(2, link.getGuardianId());
+                    // The student row is the source of truth for a primary
+                    // guardian. The database trigger synchronizes the link row.
+                    statement.setBoolean(3, false);
+                    statement.setBoolean(4, link.isEmergencyContact());
+                    boolean inserted = statement.executeUpdate() > 0;
+                    if (inserted && link.isPrimaryContact()) {
+                        try (PreparedStatement update = connection.prepareStatement(SQL_SET_PRIMARY)) {
+                            update.setInt(1, link.getGuardianId());
+                            update.setInt(2, link.getStudentId());
+                            update.executeUpdate();
+                        }
+                    }
+                    connection.commit();
+                    return inserted;
+                }
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(true);
+            }
         }
     }
 

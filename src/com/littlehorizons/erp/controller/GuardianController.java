@@ -202,9 +202,18 @@ public class GuardianController {
                 ConsoleUtils.printError("That guardian is not linked to this student.");
                 return;
             }
+            StudentGuardianLink selected = links.stream()
+                    .filter(link -> link.getGuardianId() == guardianId)
+                    .findFirst()
+                    .orElseThrow();
             if (links.size() == 1) {
                 ConsoleUtils.printError("Cannot remove the only guardian. Every student must keep "
                         + "at least one guardian. Assign another guardian first.");
+                return;
+            }
+            if (selected.isPrimaryContact()) {
+                ConsoleUtils.printError("Cannot remove the primary guardian. Assign another primary "
+                        + "guardian first.");
                 return;
             }
             if (ConsoleUtils.confirm("Remove this link?")) {

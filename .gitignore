@@ -8,6 +8,18 @@ invoices/
 
 # Local secrets and machine-specific configuration
 db.properties
+.env
+.env.*
+!.env.example
+*.local.properties
+*.secret
+*.secrets
+*.pem
+*.key
+*.p12
+*.jks
+secrets/
+credentials/
 
 # IDE files
 .idea/

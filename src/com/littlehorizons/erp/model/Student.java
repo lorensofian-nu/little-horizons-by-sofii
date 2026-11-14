@@ -28,6 +28,7 @@ public class Student {
     private String medicalConditions;
     private LocalDate admissionDate;
     private StudentStatus status;
+    private Integer primaryGuardianId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -204,6 +205,14 @@ public class Student {
 
     public void setStatus(StudentStatus status) {
         this.status = status;
+    }
+
+    public Integer getPrimaryGuardianId() {
+        return primaryGuardianId;
+    }
+
+    public void setPrimaryGuardianId(Integer primaryGuardianId) {
+        this.primaryGuardianId = primaryGuardianId;
     }
 
     public LocalDateTime getCreatedAt() {

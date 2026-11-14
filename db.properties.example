@@ -11,3 +11,7 @@ db.ssl=true
 db.verifyServerCertificate=true
 db.allowPublicKeyRetrieval=false
 db.poolSize=10
+
+# Optional local first-run administrator. Keep this file untracked and private.
+# app.initialAdminUsername=admin
+# app.initialAdminPassword=REPLACE_WITH_A_PRIVATE_PASSWORD_OF_12_CHARACTERS_OR_MORE

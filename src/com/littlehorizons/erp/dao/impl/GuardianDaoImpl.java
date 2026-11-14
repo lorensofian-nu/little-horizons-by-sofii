@@ -195,7 +195,7 @@ public class GuardianDaoImpl implements GuardianDao {
 
     private void fillParameters(PreparedStatement statement, Guardian guardian) throws SQLException {
         statement.setString(1, guardian.getDocumentType() == null
-                ? GuardianDocumentType.CC.toString() : guardian.getDocumentType().toString());
+                ? GuardianDocumentType.CC.getDatabaseValue() : guardian.getDocumentType().getDatabaseValue());
         statement.setString(2, guardian.getDocumentNumber());
         statement.setString(3, guardian.getFirstName());
         setNullableString(statement, 4, guardian.getSecondName());

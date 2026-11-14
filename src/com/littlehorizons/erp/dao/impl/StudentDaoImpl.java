@@ -30,21 +30,22 @@ public class StudentDaoImpl implements StudentDao {
     private static final String SQL_INSERT =
             "INSERT INTO estudiantes (tipo_documento, numero_documento, primer_nombre, segundo_nombre, "
             + "primer_apellido, segundo_apellido, fecha_nacimiento, genero, direccion, telefono, "
-            + "correo_electronico, tipo_sangre, alergias, condiciones_medicas, fecha_ingreso, estado) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "correo_electronico, tipo_sangre, alergias, condiciones_medicas, fecha_ingreso, estado, "
+            + "id_acudiente_principal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String SQL_UPDATE =
             "UPDATE estudiantes SET tipo_documento = ?, numero_documento = ?, primer_nombre = ?, "
             + "segundo_nombre = ?, primer_apellido = ?, segundo_apellido = ?, fecha_nacimiento = ?, "
             + "genero = ?, direccion = ?, telefono = ?, correo_electronico = ?, tipo_sangre = ?, "
-            + "alergias = ?, condiciones_medicas = ?, fecha_ingreso = ?, estado = ? "
+            + "alergias = ?, condiciones_medicas = ?, fecha_ingreso = ?, estado = ?, "
+            + "id_acudiente_principal = ? "
             + "WHERE id_estudiante = ?";
 
     private static final String SQL_SELECT_BASE =
             "SELECT id_estudiante, tipo_documento, numero_documento, primer_nombre, segundo_nombre, "
             + "primer_apellido, segundo_apellido, fecha_nacimiento, genero, direccion, telefono, "
             + "correo_electronico, tipo_sangre, alergias, condiciones_medicas, fecha_ingreso, estado, "
-            + "fecha_creacion, fecha_actualizacion FROM estudiantes ";
+            + "id_acudiente_principal, fecha_creacion, fecha_actualizacion FROM estudiantes ";
 
     @Override
     public int save(Student student) throws SQLException {
@@ -174,7 +175,7 @@ public class StudentDaoImpl implements StudentDao {
         try (Connection connection = DatabaseConnection.getInstance().getConnection();
              PreparedStatement statement = connection.prepareStatement(SQL_UPDATE)) {
             fillInsertParameters(statement, student);
-            statement.setInt(17, student.getId());
+            statement.setInt(18, student.getId());
             return statement.executeUpdate() > 0;
         }
     }
@@ -234,6 +235,16 @@ public class StudentDaoImpl implements StudentDao {
         setDate(statement, 15, student.getAdmissionDate());
         statement.setString(16, student.getStatus() == null
                 ? StudentStatus.ACTIVE.toString() : student.getStatus().toString());
+        setNullableInt(statement, 17, student.getPrimaryGuardianId());
+    }
+
+    private void setNullableInt(PreparedStatement statement, int index, Integer value)
+            throws SQLException {
+        if (value == null) {
+            statement.setNull(index, Types.INTEGER);
+        } else {
+            statement.setInt(index, value);
+        }
     }
 
     private void setNullableString(PreparedStatement statement, int index, String value)
@@ -280,6 +291,8 @@ public class StudentDaoImpl implements StudentDao {
         Date admissionDate = resultSet.getDate("fecha_ingreso");
         student.setAdmissionDate(admissionDate == null ? null : admissionDate.toLocalDate());
         student.setStatus(StudentStatus.fromDb(resultSet.getString("estado")));
+        int primaryGuardianId = resultSet.getInt("id_acudiente_principal");
+        student.setPrimaryGuardianId(resultSet.wasNull() ? null : primaryGuardianId);
         Timestamp createdAt = resultSet.getTimestamp("fecha_creacion");
         student.setCreatedAt(createdAt == null ? null : createdAt.toLocalDateTime());
         Timestamp updatedAt = resultSet.getTimestamp("fecha_actualizacion");

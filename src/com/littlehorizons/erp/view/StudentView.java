@@ -24,8 +24,9 @@ public class StudentView {
     public StudentView() {
         StudentDaoImpl studentDao = new StudentDaoImpl();
         StudentGuardianDaoImpl studentGuardianDao = new StudentGuardianDaoImpl();
-        this.studentController = new StudentController(studentDao);
-        this.guardianController = new GuardianController(new GuardianDaoImpl(),
+        GuardianDaoImpl guardianDao = new GuardianDaoImpl();
+        this.studentController = new StudentController(studentDao, guardianDao);
+        this.guardianController = new GuardianController(guardianDao,
                 studentGuardianDao, studentDao);
         this.enrollmentController = new EnrollmentController(new EnrollmentDaoImpl(),
                 studentDao, new GradeDaoImpl(), studentGuardianDao);

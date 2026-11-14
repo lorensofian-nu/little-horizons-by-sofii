@@ -54,7 +54,7 @@ public final class Main {
         AuthenticationService authenticationService = new AuthenticationService();
         try {
             if (authenticationService.bootstrapInitialAdministrator()) {
-                ConsoleUtils.printSuccess("Initial administrator created from environment configuration.");
+                ConsoleUtils.printSuccess("Initial administrator created from configured credentials.");
             }
             if (!authenticationService.hasUsers()) {
                 ConsoleUtils.printError("No application users exist. Set ERP_INITIAL_ADMIN_PASSWORD "
