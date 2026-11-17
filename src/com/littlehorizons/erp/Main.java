@@ -3,6 +3,8 @@ package com.littlehorizons.erp;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.DatabaseConnection;
 import com.littlehorizons.erp.util.LoggerUtil;
+import com.littlehorizons.erp.util.SchemaVersionChecker;
+import com.littlehorizons.erp.validation.PasswordPolicy;
 import com.littlehorizons.erp.model.AuthenticatedUser;
 import com.littlehorizons.erp.service.AuthenticationService;
 import com.littlehorizons.erp.view.AcademicView;
@@ -12,6 +14,8 @@ import com.littlehorizons.erp.view.ReportsView;
 import com.littlehorizons.erp.view.ResourceView;
 import com.littlehorizons.erp.view.StudentView;
 import com.littlehorizons.erp.view.TeacherView;
+
+import java.util.Optional;
 
 /**
  * Entry point of the Little Horizons ERP console application.
@@ -51,6 +55,21 @@ public final class Main {
             return;
         }
 
+        try {
+            java.util.Set<String> missing = SchemaVersionChecker.missingVersions();
+            if (!missing.isEmpty()) {
+                ConsoleUtils.printError(SchemaVersionChecker.missingVersionsMessage(missing));
+                LoggerUtil.logInfo("Application started with an outdated database schema");
+                return;
+            }
+        } catch (java.sql.SQLException exception) {
+            ConsoleUtils.printError("The database schema is outdated: the 'schema_migrations' "
+                    + "table is missing. Run docs/database.sql (new installation) or the "
+                    + "scripts in docs/migrations/ in ascending order (upgrade).");
+            LoggerUtil.logError("Main.schemaVersionCheck", exception);
+            return;
+        }
+
         AuthenticationService authenticationService = new AuthenticationService();
         try {
             if (authenticationService.bootstrapInitialAdministrator()) {
@@ -74,12 +93,12 @@ public final class Main {
             return;
         }
 
-        StudentView studentView = new StudentView();
-        AcademicView academicView = new AcademicView();
-        TeacherView teacherView = new TeacherView();
-        ExtracurricularView extracurricularView = new ExtracurricularView();
+        StudentView studentView = new StudentView(user.getRole());
+        AcademicView academicView = new AcademicView(user.getRole());
+        TeacherView teacherView = new TeacherView(user.getRole());
+        ExtracurricularView extracurricularView = new ExtracurricularView(user.getRole());
         FinancialView financialView = new FinancialView(user.getRole());
-        ResourceView resourceView = new ResourceView();
+        ResourceView resourceView = new ResourceView(user.getRole());
         ReportsView reportsView = new ReportsView(user.getRole());
 
         boolean running = true;
@@ -138,6 +157,15 @@ public final class Main {
                 return null;
             }
             ConsoleUtils.printError("Invalid credentials. Attempt " + attempt + " of 3.");
+            try {
+                if (authenticationService.isAccountLocked(username)) {
+                    ConsoleUtils.printError("This account is temporarily locked for "
+                            + AuthenticationService.LOCKOUT_MINUTES
+                            + " minutes due to repeated failed logins.");
+                }
+            } catch (java.sql.SQLException lockException) {
+                LoggerUtil.logError("Main.authenticate.lockCheck", lockException);
+            }
         }
         ConsoleUtils.printError("Maximum login attempts exceeded.");
         return null;
@@ -149,7 +177,12 @@ public final class Main {
         char[] first = ConsoleUtils.readSecret("New password (minimum 12 characters): ");
         char[] second = ConsoleUtils.readSecret("Repeat new password: ");
         try {
-            if (first.length < 12 || !java.util.Arrays.equals(first, second)) {
+            Optional<String> violation = PasswordPolicy.violation(first, user.getUsername());
+            if (violation.isPresent()) {
+                ConsoleUtils.printError("Password rejected: " + violation.get() + ".");
+                return false;
+            }
+            if (!java.util.Arrays.equals(first, second)) {
                 ConsoleUtils.printError("Passwords must match and contain at least 12 characters.");
                 return false;
             }
