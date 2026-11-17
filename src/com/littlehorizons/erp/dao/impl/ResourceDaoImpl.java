@@ -4,6 +4,7 @@ import com.littlehorizons.erp.dao.ResourceDao;
 import com.littlehorizons.erp.model.Resource;
 import com.littlehorizons.erp.model.ResourceState;
 import com.littlehorizons.erp.util.DatabaseConnection;
+import com.littlehorizons.erp.util.LikePatternUtil;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -43,6 +44,9 @@ public class ResourceDaoImpl implements ResourceDao {
                 if (keys.next()) {
                     resource.setId(keys.getInt(1));
                 }
+            }
+            if (resource.getId() == 0) {
+                throw new SQLException("No generated key was returned for the resource insert.");
             }
             return resource.getId();
         }
@@ -140,7 +144,7 @@ public class ResourceDaoImpl implements ResourceDao {
         List<Resource> resources = new ArrayList<>();
         try (Connection connection = DatabaseConnection.getInstance().getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, "%" + nameFragment.toLowerCase() + "%");
+            statement.setString(1, LikePatternUtil.contains(nameFragment.toLowerCase()));
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     resources.add(mapRow(resultSet));

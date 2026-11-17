@@ -4,7 +4,6 @@ import com.littlehorizons.erp.dao.SubjectDao;
 import com.littlehorizons.erp.model.GradeSummary;
 import com.littlehorizons.erp.model.Subject;
 import com.littlehorizons.erp.util.DatabaseConnection;
-import com.littlehorizons.erp.util.LoggerUtil;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -179,8 +178,7 @@ public class SubjectDaoImpl implements SubjectDao {
                 return keys.getInt(1);
             }
         }
-        LoggerUtil.logError("SubjectDaoImpl.save", new SQLException("No generated key returned"));
-        return 0;
+        throw new SQLException("No generated key was returned for the last insert.");
     }
 
     private List<Subject> mapList(ResultSet resultSet) throws SQLException {

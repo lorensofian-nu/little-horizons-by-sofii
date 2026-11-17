@@ -3,6 +3,7 @@ package com.littlehorizons.erp.dao.impl;
 import com.littlehorizons.erp.dao.StudentGuardianDao;
 import com.littlehorizons.erp.model.StudentGuardianLink;
 import com.littlehorizons.erp.util.DatabaseConnection;
+import com.littlehorizons.erp.util.LoggerUtil;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -68,10 +69,10 @@ public class StudentGuardianDaoImpl implements StudentGuardianDao {
                     return inserted;
                 }
             } catch (SQLException exception) {
-                connection.rollback();
+                safeRollback(connection, "assign guardian link", exception);
                 throw exception;
             } finally {
-                connection.setAutoCommit(true);
+                restoreAutoCommit(connection, "assign guardian link");
             }
         }
     }
@@ -179,5 +180,21 @@ public class StudentGuardianDaoImpl implements StudentGuardianDao {
             }
         }
         return name.toString();
+    }
+
+    private void safeRollback(Connection connection, String context, SQLException original) {
+        try {
+            connection.rollback();
+        } catch (SQLException rollbackException) {
+            LoggerUtil.logError("Rollback failed while trying to " + context, rollbackException);
+        }
+    }
+
+    private void restoreAutoCommit(Connection connection, String context) {
+        try {
+            connection.setAutoCommit(true);
+        } catch (SQLException restoreException) {
+            LoggerUtil.logError("Restoring auto-commit for " + context, restoreException);
+        }
     }
 }

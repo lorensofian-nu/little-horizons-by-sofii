@@ -4,7 +4,6 @@ import com.littlehorizons.erp.dao.AcademicRecordDao;
 import com.littlehorizons.erp.model.AcademicRecord;
 import com.littlehorizons.erp.model.Period;
 import com.littlehorizons.erp.util.DatabaseConnection;
-import com.littlehorizons.erp.util.LoggerUtil;
 
 import java.sql.Connection;
 import java.sql.Date;
@@ -235,8 +234,7 @@ public class AcademicRecordDaoImpl implements AcademicRecordDao {
                 return keys.getInt(1);
             }
         }
-        LoggerUtil.logError("AcademicRecordDaoImpl.save", new SQLException("No generated key returned"));
-        return 0;
+        throw new SQLException("No generated key was returned for the last insert.");
     }
 
     private List<AcademicRecord> mapList(ResultSet resultSet) throws SQLException {

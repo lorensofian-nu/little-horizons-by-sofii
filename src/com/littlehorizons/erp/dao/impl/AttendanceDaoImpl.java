@@ -4,7 +4,6 @@ import com.littlehorizons.erp.dao.AttendanceDao;
 import com.littlehorizons.erp.model.Attendance;
 import com.littlehorizons.erp.model.AttendanceStatus;
 import com.littlehorizons.erp.util.DatabaseConnection;
-import com.littlehorizons.erp.util.LoggerUtil;
 
 import java.sql.Connection;
 import java.sql.Date;
@@ -207,8 +206,7 @@ public class AttendanceDaoImpl implements AttendanceDao {
                 return keys.getInt(1);
             }
         }
-        LoggerUtil.logError("AttendanceDaoImpl.save", new SQLException("No generated key returned"));
-        return 0;
+        throw new SQLException("No generated key was returned for the last insert.");
     }
 
     private List<Attendance> mapList(ResultSet resultSet) throws SQLException {

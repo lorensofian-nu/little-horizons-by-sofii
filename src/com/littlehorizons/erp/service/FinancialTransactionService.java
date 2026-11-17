@@ -80,10 +80,10 @@ public class FinancialTransactionService {
                 INSERT_PAYMENT, java.sql.Statement.RETURN_GENERATED_KEYS)) {
             statement.setInt(1, payment.getStudentId());
             if (payment.getGuardianId() == null) {
-                statement.setNull(2, java.sql.Types.INTEGER);
-            } else {
-                statement.setInt(2, payment.getGuardianId());
+                throw new SQLException("Cannot save a payment without a guardian: "
+                        + "pagos.id_acudiente is NOT NULL.");
             }
+            statement.setInt(2, payment.getGuardianId());
             statement.setInt(3, payment.getConceptId());
             statement.setBigDecimal(4, payment.getAmountPaid());
             statement.setDate(5, java.sql.Date.valueOf(payment.getPaymentDate()));

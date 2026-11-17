@@ -34,6 +34,9 @@ public class ResourceCategoryDaoImpl implements ResourceCategoryDao {
                     category.setId(keys.getInt(1));
                 }
             }
+            if (category.getId() == 0) {
+                throw new SQLException("No generated key was returned for the category insert.");
+            }
             return category.getId();
         }
     }

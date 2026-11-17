@@ -6,6 +6,7 @@ import com.littlehorizons.erp.model.GuardianDocumentType;
 import com.littlehorizons.erp.model.PageRequest;
 import com.littlehorizons.erp.model.PageResult;
 import com.littlehorizons.erp.util.DatabaseConnection;
+import com.littlehorizons.erp.util.LikePatternUtil;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -95,7 +96,7 @@ public class GuardianDaoImpl implements GuardianDao {
                 + "WHERE CONCAT(primer_nombre, ' ', IFNULL(segundo_nombre, ''), ' ', primer_apellido, ' ', "
                 + "IFNULL(segundo_apellido, '')) LIKE ? OR numero_documento LIKE ? "
                 + "ORDER BY primer_apellido, primer_nombre";
-        String pattern = "%" + term + "%";
+        String pattern = LikePatternUtil.contains(term);
         List<Guardian> guardians = new ArrayList<>();
         try (Connection connection = DatabaseConnection.getInstance().getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -123,7 +124,7 @@ public class GuardianDaoImpl implements GuardianDao {
                 + "WHERE CONCAT(primer_nombre, ' ', IFNULL(segundo_nombre, ''), ' ', primer_apellido, ' ', "
                 + "IFNULL(segundo_apellido, '')) LIKE ? OR numero_documento LIKE ? "
                 + "ORDER BY primer_apellido, primer_nombre, id_acudiente LIMIT ? OFFSET ?";
-        String pattern = "%" + term + "%";
+        String pattern = LikePatternUtil.contains(term);
         List<Guardian> guardians = new ArrayList<>();
         try (Connection connection = DatabaseConnection.getInstance().getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -221,7 +222,7 @@ public class GuardianDaoImpl implements GuardianDao {
 
     private int readGeneratedKey(Statement statement) throws SQLException {
         try (ResultSet keys = statement.getGeneratedKeys()) {
-            return keys.next() ? keys.getInt(1) : 0;
+            throw new SQLException("No generated key was returned for the last insert.");
         }
     }
 

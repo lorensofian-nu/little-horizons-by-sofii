@@ -9,6 +9,7 @@ import com.littlehorizons.erp.model.StudentSummary;
 import com.littlehorizons.erp.model.PageRequest;
 import com.littlehorizons.erp.model.PageResult;
 import com.littlehorizons.erp.util.DatabaseConnection;
+import com.littlehorizons.erp.util.LikePatternUtil;
 
 import java.sql.Connection;
 import java.sql.Date;
@@ -102,7 +103,7 @@ public class StudentDaoImpl implements StudentDao {
                 + "WHERE CONCAT(primer_nombre, ' ', IFNULL(segundo_nombre, ''), ' ', primer_apellido, ' ', "
                 + "IFNULL(segundo_apellido, '')) LIKE ? OR numero_documento LIKE ? "
                 + "ORDER BY primer_apellido, primer_nombre";
-        String pattern = "%" + term + "%";
+        String pattern = LikePatternUtil.contains(term);
         List<Student> students = new ArrayList<>();
         try (Connection connection = DatabaseConnection.getInstance().getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -130,7 +131,7 @@ public class StudentDaoImpl implements StudentDao {
                 + "WHERE CONCAT(primer_nombre, ' ', IFNULL(segundo_nombre, ''), ' ', primer_apellido, ' ', "
                 + "IFNULL(segundo_apellido, '')) LIKE ? OR numero_documento LIKE ? "
                 + "ORDER BY primer_apellido, primer_nombre, id_estudiante LIMIT ? OFFSET ?";
-        String pattern = "%" + term + "%";
+        String pattern = LikePatternUtil.contains(term);
         List<Student> students = new ArrayList<>();
         try (Connection connection = DatabaseConnection.getInstance().getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -235,16 +236,11 @@ public class StudentDaoImpl implements StudentDao {
         setDate(statement, 15, student.getAdmissionDate());
         statement.setString(16, student.getStatus() == null
                 ? StudentStatus.ACTIVE.toString() : student.getStatus().toString());
-        setNullableInt(statement, 17, student.getPrimaryGuardianId());
-    }
-
-    private void setNullableInt(PreparedStatement statement, int index, Integer value)
-            throws SQLException {
-        if (value == null) {
-            statement.setNull(index, Types.INTEGER);
-        } else {
-            statement.setInt(index, value);
+        if (student.getPrimaryGuardianId() == null) {
+            throw new SQLException("Cannot save a student without a primary guardian: "
+                    + "estudiantes.id_acudiente_principal is NOT NULL.");
         }
+        statement.setInt(17, student.getPrimaryGuardianId());
     }
 
     private void setNullableString(PreparedStatement statement, int index, String value)
@@ -266,7 +262,7 @@ public class StudentDaoImpl implements StudentDao {
 
     private int readGeneratedKey(Statement statement) throws SQLException {
         try (ResultSet keys = statement.getGeneratedKeys()) {
-            return keys.next() ? keys.getInt(1) : 0;
+            throw new SQLException("No generated key was returned for the last insert.");
         }
     }
 

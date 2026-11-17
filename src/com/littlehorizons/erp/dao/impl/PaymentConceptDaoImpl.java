@@ -45,7 +45,7 @@ public class PaymentConceptDaoImpl implements PaymentConceptDao {
                 }
             }
         }
-        return 0;
+        throw new SQLException("No generated key was returned for the concept insert.");
     }
 
     @Override

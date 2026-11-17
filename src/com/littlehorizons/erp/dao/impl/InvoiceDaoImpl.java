@@ -46,7 +46,7 @@ public class InvoiceDaoImpl implements InvoiceDao {
                 }
             }
         }
-        return 0;
+        throw new SQLException("No generated key was returned for the invoice insert.");
     }
 
     @Override

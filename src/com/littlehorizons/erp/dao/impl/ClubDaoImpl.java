@@ -182,7 +182,7 @@ public class ClubDaoImpl implements ClubDao {
 
     private int fetchGeneratedId(Statement statement) throws SQLException {
         try (ResultSet keys = statement.getGeneratedKeys()) {
-            return keys.next() ? keys.getInt(1) : 0;
+            throw new SQLException("No generated key was returned for the last insert.");
         }
     }
 }

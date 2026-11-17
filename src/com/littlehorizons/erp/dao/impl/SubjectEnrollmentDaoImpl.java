@@ -7,7 +7,6 @@ import com.littlehorizons.erp.model.SubjectEnrollment;
 import com.littlehorizons.erp.model.SubjectEnrollmentStatus;
 import com.littlehorizons.erp.model.AcademicTeacherSummary;
 import com.littlehorizons.erp.util.DatabaseConnection;
-import com.littlehorizons.erp.util.LoggerUtil;
 
 import java.sql.Connection;
 import java.sql.Date;
@@ -268,8 +267,7 @@ public class SubjectEnrollmentDaoImpl implements SubjectEnrollmentDao {
                 return keys.getInt(1);
             }
         }
-        LoggerUtil.logError("SubjectEnrollmentDaoImpl.save", new SQLException("No generated key returned"));
-        return 0;
+        throw new SQLException("No generated key was returned for the last insert.");
     }
 
     private List<SubjectEnrollment> mapList(ResultSet resultSet) throws SQLException {

@@ -63,7 +63,7 @@ public class EventParticipationDaoImpl implements EventParticipationDao {
             statement.setString(5, participation.getObservations());
             statement.executeUpdate();
             try (ResultSet keys = statement.getGeneratedKeys()) {
-                return keys.next() ? keys.getInt(1) : 0;
+                throw new SQLException("No generated key was returned for the last insert.");
             }
         }
     }

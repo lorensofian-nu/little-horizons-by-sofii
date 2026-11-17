@@ -67,7 +67,7 @@ public class EventDaoImpl implements EventDao {
             statement.setBoolean(8, event.isActive());
             statement.executeUpdate();
             try (ResultSet keys = statement.getGeneratedKeys()) {
-                return keys.next() ? keys.getInt(1) : 0;
+                throw new SQLException("No generated key was returned for the last insert.");
             }
         }
     }
