@@ -37,8 +37,8 @@ SET @add_birth_date_check := IF(
        AND CONSTRAINT_TYPE = 'CHECK'
        AND CONSTRAINT_NAME = 'chk_estudiantes_nacimiento') > 0,
     'SELECT 1',
-    'ALTER TABLE estudiantes ADD CONSTRAINT chk_estudiantes_nacimiento '
-        || 'CHECK (fecha_nacimiento >= ''1900-01-01'')'
+    CONCAT('ALTER TABLE estudiantes ADD CONSTRAINT chk_estudiantes_nacimiento ',
+        'CHECK (fecha_nacimiento >= ''1900-01-01'')')
 );
 PREPARE add_birth_date_check_statement FROM @add_birth_date_check;
 EXECUTE add_birth_date_check_statement;
@@ -51,8 +51,8 @@ SET @add_matriculas_year_check := IF(
        AND CONSTRAINT_TYPE = 'CHECK'
        AND CONSTRAINT_NAME = 'chk_matriculas_anio') > 0,
     'SELECT 1',
-    'ALTER TABLE matriculas ADD CONSTRAINT chk_matriculas_anio '
-        || 'CHECK (año_academico BETWEEN 2000 AND 2100)'
+    CONCAT('ALTER TABLE matriculas ADD CONSTRAINT chk_matriculas_anio ',
+        'CHECK (año_academico BETWEEN 2000 AND 2100)')
 );
 PREPARE add_matriculas_year_check_statement FROM @add_matriculas_year_check;
 EXECUTE add_matriculas_year_check_statement;
@@ -65,8 +65,8 @@ SET @add_asignaciones_year_check := IF(
        AND CONSTRAINT_TYPE = 'CHECK'
        AND CONSTRAINT_NAME = 'chk_asignaciones_anio') > 0,
     'SELECT 1',
-    'ALTER TABLE asignaciones_profesor ADD CONSTRAINT chk_asignaciones_anio '
-        || 'CHECK (año_academico BETWEEN 2000 AND 2100)'
+    CONCAT('ALTER TABLE asignaciones_profesor ADD CONSTRAINT chk_asignaciones_anio ',
+        'CHECK (año_academico BETWEEN 2000 AND 2100)')
 );
 PREPARE add_asignaciones_year_check_statement FROM @add_asignaciones_year_check;
 EXECUTE add_asignaciones_year_check_statement;
@@ -75,12 +75,12 @@ DEALLOCATE PREPARE add_asignaciones_year_check_statement;
 SET @add_inscriptos_year_check := IF(
     (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
      WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = 'inscriptos_materia'
+       AND TABLE_NAME = 'inscripciones_materia'
        AND CONSTRAINT_TYPE = 'CHECK'
        AND CONSTRAINT_NAME = 'chk_inscriptos_anio') > 0,
     'SELECT 1',
-    'ALTER TABLE inscriptos_materia ADD CONSTRAINT chk_inscriptos_anio '
-        || 'CHECK (año_academico BETWEEN 2000 AND 2100)'
+    CONCAT('ALTER TABLE inscripciones_materia ADD CONSTRAINT chk_inscriptos_anio ',
+        'CHECK (año_academico BETWEEN 2000 AND 2100)')
 );
 PREPARE add_inscriptos_year_check_statement FROM @add_inscriptos_year_check;
 EXECUTE add_inscriptos_year_check_statement;
@@ -93,8 +93,8 @@ SET @add_pagos_year_check := IF(
        AND CONSTRAINT_TYPE = 'CHECK'
        AND CONSTRAINT_NAME = 'chk_pagos_anio') > 0,
     'SELECT 1',
-    'ALTER TABLE pagos ADD CONSTRAINT chk_pagos_anio '
-        || 'CHECK (año_academico IS NULL OR año_academico BETWEEN 2000 AND 2100)'
+    CONCAT('ALTER TABLE pagos ADD CONSTRAINT chk_pagos_anio ',
+        'CHECK (año_academico IS NULL OR año_academico BETWEEN 2000 AND 2100)')
 );
 PREPARE add_pagos_year_check_statement FROM @add_pagos_year_check;
 EXECUTE add_pagos_year_check_statement;

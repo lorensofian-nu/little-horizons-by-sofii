@@ -15,10 +15,10 @@ SET @has_failed_attempts := (
 SET @add_lockout_columns := IF(
     @has_failed_attempts > 0,
     'SELECT 1',
-    'ALTER TABLE usuarios '
-        || 'ADD COLUMN intentos_fallidos INT NOT NULL DEFAULT 0, '
-        || 'ADD COLUMN bloqueado_hasta TIMESTAMP NULL, '
-        || 'ADD INDEX idx_usuario_bloqueo (nombre_usuario, bloqueado_hasta)'
+    CONCAT('ALTER TABLE usuarios ',
+        'ADD COLUMN intentos_fallidos INT NOT NULL DEFAULT 0, ',
+        'ADD COLUMN bloqueado_hasta TIMESTAMP NULL, ',
+        'ADD INDEX idx_usuario_bloqueo (nombre_usuario, bloqueado_hasta)')
 );
 PREPARE add_lockout_columns_statement FROM @add_lockout_columns;
 EXECUTE add_lockout_columns_statement;
@@ -94,9 +94,9 @@ EXECUTE drop_club_supervisor_fk_statement;
 DEALLOCATE PREPARE drop_club_supervisor_fk_statement;
 SET @add_club_supervisor_fk := IF(
     @club_supervisor_fk IS NULL, 'SELECT 1',
-    'ALTER TABLE clubes ADD CONSTRAINT fk_clubes_profesor_supervisor '
-        || 'FOREIGN KEY (id_profesor_supervisor) REFERENCES profesores(id_profesor) '
-        || 'ON DELETE SET NULL'
+    CONCAT('ALTER TABLE clubes ADD CONSTRAINT fk_clubes_profesor_supervisor ',
+        'FOREIGN KEY (id_profesor_supervisor) REFERENCES profesores(id_profesor) ',
+        'ON DELETE SET NULL')
 );
 PREPARE add_club_supervisor_fk_statement FROM @add_club_supervisor_fk;
 EXECUTE add_club_supervisor_fk_statement;
@@ -119,9 +119,9 @@ EXECUTE drop_event_organizer_fk_statement;
 DEALLOCATE PREPARE drop_event_organizer_fk_statement;
 SET @add_event_organizer_fk := IF(
     @event_organizer_fk IS NULL, 'SELECT 1',
-    'ALTER TABLE eventos ADD CONSTRAINT fk_eventos_organizador '
-        || 'FOREIGN KEY (id_organizador) REFERENCES profesores(id_profesor) '
-        || 'ON DELETE SET NULL'
+    CONCAT('ALTER TABLE eventos ADD CONSTRAINT fk_eventos_organizador ',
+        'FOREIGN KEY (id_organizador) REFERENCES profesores(id_profesor) ',
+        'ON DELETE SET NULL')
 );
 PREPARE add_event_organizer_fk_statement FROM @add_event_organizer_fk;
 EXECUTE add_event_organizer_fk_statement;
@@ -144,9 +144,9 @@ EXECUTE drop_attendance_recorder_fk_statement;
 DEALLOCATE PREPARE drop_attendance_recorder_fk_statement;
 SET @add_attendance_recorder_fk := IF(
     @attendance_recorder_fk IS NULL, 'SELECT 1',
-    'ALTER TABLE asistencias ADD CONSTRAINT fk_asistencias_registrado_por '
-        || 'FOREIGN KEY (registrado_por) REFERENCES profesores(id_profesor) '
-        || 'ON DELETE SET NULL'
+    CONCAT('ALTER TABLE asistencias ADD CONSTRAINT fk_asistencias_registrado_por ',
+        'FOREIGN KEY (registrado_por) REFERENCES profesores(id_profesor) ',
+        'ON DELETE SET NULL')
 );
 PREPARE add_attendance_recorder_fk_statement FROM @add_attendance_recorder_fk;
 EXECUTE add_attendance_recorder_fk_statement;
