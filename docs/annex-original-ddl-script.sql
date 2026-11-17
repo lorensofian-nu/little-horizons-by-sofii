@@ -1,5 +1,18 @@
 -- Anexo: Script de Base de Datos
 
+-- ============================================================================
+-- DOCUMENTO HISTÓRICO — NO EJECUTAR.
+--
+-- Este archivo es el anexo DDL ORIGINAL del documento de requerimientos y se
+-- conserva únicamente con fines de trazabilidad. NO refleja el esquema actual
+-- del sistema: carece de las tablas `usuarios` y `secuencias_documento`, y de
+-- las columnas de horario de `asignaciones_profesor`, por lo que la aplicación
+-- FALLA si se construye la base de datos desde este script.
+--
+-- Fuente única de verdad del esquema:  docs/database.sql
+-- Actualización de instalaciones existentes:  docs/migrations/ (V001..V005)
+-- ============================================================================
+
 -- A continuación se presenta el script completo DDL de MySQL para crear todas las tablas necesarias. 
 -- Este script debe ejecutarse en una base de datos llamada `little_horizons_erp`.
 -- Si encuentra detalles que modificar o agregar, puede editar el script siempre y cuando pueda justificar sus cambios.
