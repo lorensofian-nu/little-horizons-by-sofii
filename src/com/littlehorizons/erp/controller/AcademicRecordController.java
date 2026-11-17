@@ -11,9 +11,11 @@ import com.littlehorizons.erp.model.Period;
 import com.littlehorizons.erp.model.AcademicStudentSummary;
 import com.littlehorizons.erp.model.Subject;
 import com.littlehorizons.erp.model.AcademicTeacherSummary;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.AppConstants;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
+import com.littlehorizons.erp.validation.ValidationRules;
 
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -43,12 +45,14 @@ public class AcademicRecordController {
     private final AcademicRecordDao recordDao;
     private final SubjectDao subjectDao;
     private final SubjectEnrollmentDao enrollmentDao;
+    private final UserRole userRole;
 
     /** Creates the controller with its default DAOs. */
-    public AcademicRecordController() {
+    public AcademicRecordController(UserRole userRole) {
         this.recordDao = new AcademicRecordDaoImpl();
         this.subjectDao = new SubjectDaoImpl();
         this.enrollmentDao = new SubjectEnrollmentDaoImpl();
+        this.userRole = userRole;
     }
 
     /** Shows the grades submenu. Option 0 goes back. */
@@ -188,6 +192,10 @@ public class AcademicRecordController {
     }
 
     private void deleteGrade() {
+        if (!userRole.canDeleteMasterData()) {
+            ConsoleUtils.printError("Only an administrator can delete grades.");
+            return;
+        }
         ConsoleUtils.printHeader("DELETE GRADE");
         try {
             int year = ConsoleUtils.readInt(
@@ -503,7 +511,8 @@ public class AcademicRecordController {
     /** Reads a grade, forcing one decimal: validated in [0.0, 5.0] and rounded. */
     private double readGradeValue() {
         double raw = ConsoleUtils.readDouble(
-                " Grade (0.0 - 5.0): ", AppConstants.MIN_GRADE, AppConstants.MAX_GRADE);
+                " Grade (0.0 - 5.0): ",
+                ValidationRules.MIN_GRADE_DOUBLE, ValidationRules.MAX_GRADE_DOUBLE);
         double rounded = Math.round(raw * 10.0) / 10.0;
         if (Math.abs(raw - rounded) > 1e-9) {
             System.out.println("  [i] Value adjusted to one decimal: " + formatGrade(rounded));

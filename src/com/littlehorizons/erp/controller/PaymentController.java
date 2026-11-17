@@ -15,11 +15,11 @@ import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.InvoiceGenerator;
 import com.littlehorizons.erp.util.LoggerUtil;
+import com.littlehorizons.erp.validation.FormatValidators;
 import com.littlehorizons.erp.service.FinancialTransactionService;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
@@ -44,7 +44,7 @@ public class PaymentController {
 
     public PaymentController(UserRole userRole) {
         this.paymentDao = new PaymentDaoImpl();
-        this.conceptController = new PaymentConceptController();
+        this.conceptController = new PaymentConceptController(userRole);
         this.invoiceDao = new InvoiceDaoImpl();
         this.financialTransactionService = new FinancialTransactionService();
         this.userRole = userRole;
@@ -74,10 +74,10 @@ public class PaymentController {
             }
 
             // Personalized amount per student (sibling discounts, etc.).
-            double defaultAmount = concept.getBaseAmount().doubleValue();
-            System.out.printf("  Base amount of the concept: %s%n", InvoiceGenerator.formatMoney(defaultAmount));
-            double amountValue = ConsoleUtils.readOptionalMoney(
-                    "Amount paid (empty = base amount): ", defaultAmount);
+            System.out.printf("  Base amount of the concept: %s%n",
+                    InvoiceGenerator.formatMoney(concept.getBaseAmount().doubleValue()));
+            BigDecimal amountPaid = ConsoleUtils.readOptionalBigDecimalAmount(
+                    "Amount paid (empty = base amount): ", concept.getBaseAmount());
 
             LocalDate paymentDate = ConsoleUtils.readOptionalDate("Payment date", LocalDate.now());
             String methodLabel = ConsoleUtils.readOption("Payment method:", PaymentMethod.labels());
@@ -91,12 +91,21 @@ public class PaymentController {
             String notes = ConsoleUtils.readOptionalText("Notes (empty = none): ", null);
 
             // Receipt number: empty -> auto-generated sequential number.
-            String receiptNumber = ConsoleUtils.readOptionalText(
-                    "Receipt number (empty = auto): ", null);
+            // Manual numbers must follow the automatic format REC-YYYY-NNNNNN.
+            String receiptNumber;
+            while (true) {
+                receiptNumber = ConsoleUtils.readOptionalText(
+                        "Receipt number (empty = auto): ", null);
+                if (receiptNumber == null || FormatValidators.isValidReceiptNumber(receiptNumber)) {
+                    break;
+                }
+                ConsoleUtils.printError("The receipt must follow the format REC-YYYY-NNNNNN "
+                        + "(e.g. REC-2026-000123), or leave it empty for an automatic number.");
+            }
             Payment payment = new Payment(0, student.getStudentId(),
                     guardian == null ? null : guardian.getId(),
                     concept.getId(),
-                    BigDecimal.valueOf(amountValue).setScale(2, RoundingMode.HALF_UP),
+                    amountPaid,
                     paymentDate, method, receiptNumber, academicYear,
                     PaymentPeriod.fromLabel(periodLabel), notes, null);
 

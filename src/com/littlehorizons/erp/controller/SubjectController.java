@@ -4,8 +4,10 @@ import com.littlehorizons.erp.dao.SubjectDao;
 import com.littlehorizons.erp.dao.impl.SubjectDaoImpl;
 import com.littlehorizons.erp.model.GradeSummary;
 import com.littlehorizons.erp.model.Subject;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
+import com.littlehorizons.erp.validation.ValidationRules;
 
 import java.sql.SQLException;
 import java.util.List;
@@ -19,14 +21,16 @@ import java.util.stream.Collectors;
  */
 public class SubjectController {
 
-    private static final int MIN_WEEKLY_HOURS = 1;
-    private static final int MAX_WEEKLY_HOURS = 40;
+    private static final int MIN_WEEKLY_HOURS = ValidationRules.MIN_WEEKLY_HOURS;
+    private static final int MAX_WEEKLY_HOURS = ValidationRules.MAX_WEEKLY_HOURS;
 
     private final SubjectDao subjectDao;
+    private final UserRole userRole;
 
     /** Creates the controller with its default DAO. */
-    public SubjectController() {
+    public SubjectController(UserRole userRole) {
         this.subjectDao = new SubjectDaoImpl();
+        this.userRole = userRole;
     }
 
     /** Shows the subjects submenu. Option 0 goes back. */
@@ -155,6 +159,11 @@ public class SubjectController {
     }
 
     private void delete() {
+        if (!userRole.canDeleteMasterData()) {
+            ConsoleUtils.printError(
+                    "Only an administrator can delete subjects and their academic history.");
+            return;
+        }
         ConsoleUtils.printHeader("DELETE SUBJECT");
         try {
             Subject subject = readExistingSubject();

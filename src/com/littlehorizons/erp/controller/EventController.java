@@ -5,6 +5,7 @@ import com.littlehorizons.erp.dao.impl.EventDaoImpl;
 import com.littlehorizons.erp.model.Event;
 import com.littlehorizons.erp.model.EventType;
 import com.littlehorizons.erp.model.TeacherSummary;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.AppConstants;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
@@ -20,6 +21,12 @@ import java.util.List;
 public class EventController {
 
     private final EventDao eventDao = new EventDaoImpl();
+    private final UserRole userRole;
+
+    /** Creates the controller with the session role for authorization. */
+    public EventController(UserRole userRole) {
+        this.userRole = userRole;
+    }
 
     public void showMenu() {
         while (true) {
@@ -67,7 +74,7 @@ public class EventController {
                 .map(EventType::getLabel).toList();
         event.setEventType(EventType.fromLabel(
                 ConsoleUtils.readOption("Event type", typeLabels)));
-        event.setEventDate(readEventDate("Event date"));
+        event.setEventDate(readEventDate("Event date", false));
         event.setPlace(ConsoleUtils.readOptionalText("Place (empty = none): ", null));
         event.setHasCompetition(ConsoleUtils.confirm("Does the event include a competition?"));
         event.setOrganizerId(pickOrganizerId("(0 = no organizer)"));
@@ -142,7 +149,7 @@ public class EventController {
                 .map(EventType::getLabel).toList();
         String typeLabel = ConsoleUtils.readOption("Event type", typeLabels);
         event.setEventType(EventType.fromLabel(typeLabel));
-        event.setEventDate(readEventDate("Event date"));
+        event.setEventDate(readEventDate("Event date", true));
         event.setPlace(ConsoleUtils.readOptionalText(
                 "Place (empty = keep current): ", event.getPlace()));
         event.setHasCompetition(ConsoleUtils.confirm("Does the event include a competition?"));
@@ -172,6 +179,10 @@ public class EventController {
     }
 
     private void deleteEvent() throws SQLException {
+        if (!userRole.canDeleteMasterData()) {
+            ConsoleUtils.printError("Only an administrator can delete events.");
+            return;
+        }
         ConsoleUtils.printHeader("DELETE EVENT");
         int eventId = ConsoleUtils.readInt("Event ID", 1, Integer.MAX_VALUE, 0);
         if (eventId == 0) {
@@ -192,16 +203,23 @@ public class EventController {
         ConsoleUtils.printSuccess("Event deleted.");
     }
 
-    /** Reads an event date and validates it against the academic year limits. */
-    private LocalDate readEventDate(String prompt) {
+    /**
+     * Reads an event date and validates it against the academic year limits.
+     * New events cannot be scheduled in the past; updates of historical
+     * events keep allowing past dates.
+     */
+    private LocalDate readEventDate(String prompt, boolean allowPast) {
         while (true) {
             LocalDate date = ConsoleUtils.readDate(prompt);
             int year = date.getYear();
-            if (year >= AppConstants.MIN_YEAR && year <= AppConstants.MAX_YEAR) {
+            if (year < AppConstants.MIN_YEAR || year > AppConstants.MAX_YEAR) {
+                System.out.println("  [!] The year must be between "
+                        + AppConstants.MIN_YEAR + " and " + AppConstants.MAX_YEAR + ".");
+            } else if (!allowPast && date.isBefore(LocalDate.now())) {
+                System.out.println("  [!] A new event cannot be scheduled in the past.");
+            } else {
                 return date;
             }
-            System.out.println("  [!] The year must be between "
-                    + AppConstants.MIN_YEAR + " and " + AppConstants.MAX_YEAR + ".");
         }
     }
 

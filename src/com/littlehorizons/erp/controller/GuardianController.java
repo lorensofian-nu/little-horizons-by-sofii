@@ -9,9 +9,12 @@ import com.littlehorizons.erp.model.StudentGuardianLink;
 import com.littlehorizons.erp.model.StudentSummary;
 import com.littlehorizons.erp.model.PageRequest;
 import com.littlehorizons.erp.model.PageResult;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
 import com.littlehorizons.erp.util.PrivacyUtils;
+import com.littlehorizons.erp.validation.FormatValidators;
+import com.littlehorizons.erp.validation.GuardianValidator;
 
 import java.sql.SQLException;
 import java.util.Comparator;
@@ -27,12 +30,14 @@ public class GuardianController {
     private final GuardianDao guardianDao;
     private final StudentGuardianDao studentGuardianDao;
     private final StudentDao studentDao;
+    private final UserRole userRole;
 
     public GuardianController(GuardianDao guardianDao, StudentGuardianDao studentGuardianDao,
-                              StudentDao studentDao) {
+                              StudentDao studentDao, UserRole userRole) {
         this.guardianDao = guardianDao;
         this.studentGuardianDao = studentGuardianDao;
         this.studentDao = studentDao;
+        this.userRole = userRole;
     }
 
     /** Guardian registration form. */
@@ -41,6 +46,9 @@ public class GuardianController {
         try {
             Guardian guardian = readGuardianForm(null);
             if (guardian == null) {
+                return;
+            }
+            if (!reportValidationErrors(new GuardianValidator().validate(guardian))) {
                 return;
             }
             if (guardianDao.findByDocumentNumber(guardian.getDocumentNumber()) != null) {
@@ -120,6 +128,10 @@ public class GuardianController {
      * while student links still exist, preserving historical relationships.
      */
     public void deleteGuardian() {
+        if (!userRole.canDeleteMasterData()) {
+            ConsoleUtils.printError("Only an administrator can delete guardians.");
+            return;
+        }
         ConsoleUtils.printHeader("DELETE GUARDIAN");
         try {
             Guardian guardian = findGuardianByIdOrCancel();
@@ -177,9 +189,19 @@ public class GuardianController {
         }
     }
 
+    /** Prints every validation error at once; false when there are errors. */
+    private boolean reportValidationErrors(List<String> errors) {
+        if (errors.isEmpty()) {
+            return true;
+        }
+        ConsoleUtils.printError("The guardian data has " + errors.size()
+                + " problem(s); nothing was saved:");
+        errors.forEach(error -> System.out.println("    - " + error));
+        return false;
+    }
+
     /** Removes a link, refusing to leave a student without any guardian. */
-    public void removeGuardianLink() {
-        ConsoleUtils.printHeader("REMOVE GUARDIAN LINK");
+    public void removeGuardianLink() {        ConsoleUtils.printHeader("REMOVE GUARDIAN LINK");
         try {
             StudentSummary student = pickStudent();
             if (student == null) {
@@ -345,17 +367,30 @@ public class GuardianController {
     private Guardian readGuardianForm(Guardian current) {
         GuardianDocumentType documentType =
                 readDocumentType(current == null ? GuardianDocumentType.CC : current.getDocumentType());
-        String documentNumber = ConsoleUtils.readRequiredText("Document number: ");
-        String firstName = ConsoleUtils.readRequiredText("First name: ");
-        String secondName = ConsoleUtils.readOptionalText("Second name (empty = none): ",
-                current == null ? null : current.getSecondName());
-        String lastName = ConsoleUtils.readRequiredText("First last name: ");
-        String secondLastName = ConsoleUtils.readOptionalText("Second last name (empty = none): ",
-                current == null ? null : current.getSecondLastName());
+        String documentNumber = ConsoleUtils.readValidatedText("Document number: ",
+                number -> FormatValidators.isValidDocumentNumber(documentType.toString(), number),
+                "Invalid " + documentType + " number: "
+                        + FormatValidators.documentRuleDescription(documentType.toString()) + ".");
+        String firstName = FormatValidators.normalizeName(ConsoleUtils.readRequiredText("First name: "));
+        String secondName = FormatValidators.normalizeName(
+                ConsoleUtils.readOptionalText("Second name (empty = none): ",
+                        current == null ? null : current.getSecondName()));
+        String lastName = FormatValidators.normalizeName(ConsoleUtils.readRequiredText("First last name: "));
+        String secondLastName = FormatValidators.normalizeName(
+                ConsoleUtils.readOptionalText("Second last name (empty = none): ",
+                        current == null ? null : current.getSecondLastName()));
         String relationship = ConsoleUtils.readRequiredText("Relationship (parentesco): ");
-        String primaryPhone = ConsoleUtils.readRequiredText("Primary phone: ");
+        String primaryPhone = ConsoleUtils.readValidatedText("Primary phone: ",
+                FormatValidators::isValidPhone,
+                "The primary phone must be a Colombian mobile (3xx xxx xxxx) "
+                        + "or landline (60x xxx xxxx).");
         String secondaryPhone = ConsoleUtils.readOptionalText("Secondary phone (empty = none): ",
                 current == null ? null : current.getSecondaryPhone());
+        if (!FormatValidators.isValidOptionalPhone(secondaryPhone)) {
+            ConsoleUtils.printError("The secondary phone must be a Colombian mobile "
+                    + "(3xx xxx xxxx) or landline (60x xxx xxxx). Operation cancelled.");
+            return null;
+        }
         String email = ConsoleUtils.readOptionalEmail("Email (empty = none): ",
                 current == null ? null : current.getEmail());
         String address = ConsoleUtils.readOptionalText("Address (empty = none): ",

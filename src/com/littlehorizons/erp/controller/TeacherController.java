@@ -5,9 +5,12 @@ import com.littlehorizons.erp.dao.impl.TeacherDaoImpl;
 import com.littlehorizons.erp.model.Teacher;
 import com.littlehorizons.erp.model.TeacherDocumentType;
 import com.littlehorizons.erp.model.TeacherStatus;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
 import com.littlehorizons.erp.util.PrivacyUtils;
+import com.littlehorizons.erp.validation.FormatValidators;
+import com.littlehorizons.erp.validation.TeacherValidator;
 
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -26,10 +29,12 @@ import java.util.Optional;
 public class TeacherController {
 
     private final TeacherDao teacherDao;
+    private final UserRole userRole;
 
     /** Builds the controller with its default DAO implementation. */
-    public TeacherController() {
+    public TeacherController(UserRole userRole) {
         this.teacherDao = new TeacherDaoImpl();
+        this.userRole = userRole;
     }
 
     /** Creates a teacher from console input. */
@@ -37,6 +42,9 @@ public class TeacherController {
         try {
             ConsoleUtils.printHeader("REGISTER NEW TEACHER");
             Teacher teacher = readNewTeacherData();
+            if (!reportValidationErrors(new TeacherValidator().validate(teacher))) {
+                return;
+            }
             int id = teacherDao.save(teacher);
             ConsoleUtils.printSuccess("Teacher registered with id " + id + ".");
         } catch (SQLException exception) {
@@ -136,6 +144,9 @@ public class TeacherController {
                 return;
             }
             Teacher updated = readUpdateData(current);
+            if (!reportValidationErrors(new TeacherValidator().validate(updated))) {
+                return;
+            }
             if (!isDocumentAvailable(updated.getDocumentNumber(), id)
                     || !isEmailAvailable(updated.getEmail(), id)) {
                 return;
@@ -171,8 +182,13 @@ public class TeacherController {
         }
     }
 
-    /** Hard-deletes a teacher after a double confirmation. */
+    /** Hard-deletes a teacher after a double confirmation. Administrator only. */
     public void deleteTeacher() {
+        if (!userRole.canDeleteMasterData()) {
+            ConsoleUtils.printError(
+                    "Only an administrator can delete teachers permanently.");
+            return;
+        }
         try {
             ConsoleUtils.printHeader("DELETE TEACHER (PERMANENT)");
             int id = ConsoleUtils.readInt("  Teacher id to delete (0 = cancel): ",
@@ -236,28 +252,33 @@ public class TeacherController {
         String documentNumber = isUpdate
                 ? ConsoleUtils.readOptionalText("  Document number (empty = keep current): ",
                         "")
-                : ConsoleUtils.readRequiredText("  Document number: ");
+                : ConsoleUtils.readValidatedText("  Document number: ",
+                        number -> FormatValidators.isValidDocumentNumber(documentType, number),
+                        "Invalid " + documentType + " number: "
+                                + FormatValidators.documentRuleDescription(documentType) + ".");
         if (documentNumber.isEmpty()) {
             documentNumber = teacher.getDocumentNumber();
         }
         teacher.setDocumentNumber(documentNumber);
 
         teacher.setFirstName(isUpdate
-                ? ConsoleUtils.readOptionalText("  First name (empty = keep current): ",
-                        teacher.getFirstName())
-                : ConsoleUtils.readRequiredText("  First name: "));
+                ? FormatValidators.normalizeName(ConsoleUtils.readOptionalText(
+                        "  First name (empty = keep current): ", teacher.getFirstName()))
+                : FormatValidators.normalizeName(ConsoleUtils.readRequiredText("  First name: ")));
         teacher.setSecondName(isUpdate
-                ? ConsoleUtils.readOptionalText("  Second name (empty = keep current): ",
-                        nullToEmpty(teacher.getSecondName()))
-                : ConsoleUtils.readOptionalText("  Second name (optional): ", null));
+                ? FormatValidators.normalizeName(ConsoleUtils.readOptionalText(
+                        "  Second name (empty = keep current): ", nullToEmpty(teacher.getSecondName())))
+                : FormatValidators.normalizeName(ConsoleUtils.readOptionalText(
+                        "  Second name (optional): ", null)));
         teacher.setLastName(isUpdate
-                ? ConsoleUtils.readOptionalText("  First last name (empty = keep current): ",
-                        teacher.getLastName())
-                : ConsoleUtils.readRequiredText("  First last name: "));
+                ? FormatValidators.normalizeName(ConsoleUtils.readOptionalText(
+                        "  First last name (empty = keep current): ", teacher.getLastName()))
+                : FormatValidators.normalizeName(ConsoleUtils.readRequiredText("  First last name: ")));
         teacher.setSecondLastName(isUpdate
-                ? ConsoleUtils.readOptionalText("  Second last name (empty = keep current): ",
-                        nullToEmpty(teacher.getSecondLastName()))
-                : ConsoleUtils.readOptionalText("  Second last name (optional): ", null));
+                ? FormatValidators.normalizeName(ConsoleUtils.readOptionalText(
+                        "  Second last name (empty = keep current): ", nullToEmpty(teacher.getSecondLastName())))
+                : FormatValidators.normalizeName(ConsoleUtils.readOptionalText(
+                        "  Second last name (optional): ", null)));
 
         String email = ConsoleUtils.readOptionalEmail(
                 "  Email (empty = keep current): ", nullToEmpty(teacher.getEmail()));
@@ -285,6 +306,17 @@ public class TeacherController {
 
     private String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    /** Prints every validation error at once; false when there are errors. */
+    private boolean reportValidationErrors(java.util.List<String> errors) {
+        if (errors.isEmpty()) {
+            return true;
+        }
+        ConsoleUtils.printError("The teacher data has " + errors.size()
+                + " problem(s); nothing was saved:");
+        errors.forEach(error -> System.out.println("    - " + error));
+        return false;
     }
 
     // ------------------------------------------------------------------

@@ -10,6 +10,7 @@ import com.littlehorizons.erp.model.Resource;
 import com.littlehorizons.erp.model.ResourceState;
 import com.littlehorizons.erp.model.TeacherLoan;
 import com.littlehorizons.erp.model.TeacherSummary;
+import com.littlehorizons.erp.validation.ValidationRules;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
 
@@ -252,15 +253,22 @@ public class TeacherLoanController {
         return teacherId;
     }
 
-    /** Reads the expected return date, enforcing it is strictly after the loan date. */
+    /** Reads the expected return date: strictly after the loan date and
+     * inside the maximum loan window. */
     private LocalDate readExpectedReturnDate(LocalDate loanDate) {
+        LocalDate deadline = loanDate.plusDays(ValidationRules.MAX_LOAN_DAYS);
         while (true) {
             LocalDate expected = ConsoleUtils.readDate("Expected return date");
-            if (expected.isAfter(loanDate)) {
+            if (!expected.isAfter(loanDate)) {
+                ConsoleUtils.printError("The expected return date must be after the loan date ("
+                        + loanDate + ").");
+            } else if (expected.isAfter(deadline)) {
+                ConsoleUtils.printError("The expected return date cannot be more than "
+                        + ValidationRules.MAX_LOAN_DAYS + " days after the loan date ("
+                        + loanDate + " to " + deadline + ").");
+            } else {
                 return expected;
             }
-            ConsoleUtils.printError("The expected return date must be after the loan date ("
-                    + loanDate + ").");
         }
     }
 }

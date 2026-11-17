@@ -12,9 +12,11 @@ import com.littlehorizons.erp.model.StudentSummary;
 import com.littlehorizons.erp.util.AppConstants;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
+import com.littlehorizons.erp.validation.ValidationRules;
 
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.time.Period;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -75,6 +77,23 @@ public class EnrollmentController {
                         + ". Only one enrollment per student per year is allowed.");
                 return;
             }
+            // Cross-field business rules: admission year and age-vs-grade coherence.
+            if (student.getAdmissionDate() != null
+                    && academicYear < student.getAdmissionDate().getYear()) {
+                ConsoleUtils.printError("The academic year " + academicYear
+                        + " cannot be before the student's admission year ("
+                        + student.getAdmissionDate().getYear() + ").");
+                return;
+            }
+            String ageWarning = checkAgeVsGrade(student, grade, academicYear);
+            if (ageWarning != null) {
+                ConsoleUtils.printError(ageWarning);
+                if (!ConsoleUtils.confirm("This may be a special case (early entry, "
+                        + "repeater, transfer). Enroll anyway?")) {
+                    System.out.println("  Operation cancelled.");
+                    return;
+                }
+            }
             Enrollment enrollment = new Enrollment();
             enrollment.setStudentId(student.getId());
             enrollment.setGradeId(grade.getId());
@@ -92,6 +111,31 @@ public class EnrollmentController {
             ConsoleUtils.printError("Could not create the enrollment.");
             LoggerUtil.logError("EnrollmentController.enrollStudent", exception);
         }
+    }
+
+    /**
+     * Age-vs-grade coherence: a student is expected to be about
+     * {@code level + base} years old on January 1st of the academic year,
+     * with a tolerance for repeaters and transfers.
+     *
+     * @return a warning message, or null when the age is coherent
+     */
+    private String checkAgeVsGrade(Student student, Grade grade, int academicYear) {
+        if (student.getBirthDate() == null) {
+            return null;
+        }
+        LocalDate reference = LocalDate.of(academicYear, 1, 1);
+        int age = Period.between(student.getBirthDate(), reference).getYears();
+        int expected = grade.getNumericLevel() + ValidationRules.GRADE_BASE_AGE_YEARS;
+        int minimum = expected - ValidationRules.GRADE_AGE_MIN_TOLERANCE;
+        int maximum = expected + ValidationRules.GRADE_AGE_MAX_TOLERANCE;
+        if (age < minimum || age > maximum) {
+            return "Age-vs-grade warning: '" + grade.getName()
+                    + "' expects about " + expected + " years (range "
+                    + minimum + "-" + maximum + "), but the student was "
+                    + age + " years old by " + academicYear + ".";
+        }
+        return null;
     }
 
     /** Lists enrollments with filters and a per-year report using Stream API. */

@@ -10,9 +10,12 @@ import com.littlehorizons.erp.model.StudentStatus;
 import com.littlehorizons.erp.model.StudentSummary;
 import com.littlehorizons.erp.model.PageRequest;
 import com.littlehorizons.erp.model.PageResult;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
 import com.littlehorizons.erp.util.PrivacyUtils;
+import com.littlehorizons.erp.validation.FormatValidators;
+import com.littlehorizons.erp.validation.StudentValidator;
 
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -27,14 +30,13 @@ public class StudentController {
 
     private final StudentDao studentDao;
     private final GuardianDao guardianDao;
+    private final UserRole userRole;
 
-    public StudentController(StudentDao studentDao) {
-        this(studentDao, null);
-    }
-
-    public StudentController(StudentDao studentDao, GuardianDao guardianDao) {
+    public StudentController(StudentDao studentDao, GuardianDao guardianDao,
+                             UserRole userRole) {
         this.studentDao = studentDao;
         this.guardianDao = guardianDao;
+        this.userRole = userRole;
     }
 
     /** Full student registration form. */
@@ -43,6 +45,9 @@ public class StudentController {
         try {
             Student student = readStudentForm(null);
             if (student == null) {
+                return;
+            }
+            if (!reportValidationErrors(new StudentValidator().validate(student))) {
                 return;
             }
             if (studentDao.findByDocumentNumber(student.getDocumentNumber()) != null) {
@@ -107,6 +112,9 @@ public class StudentController {
             if (updated == null) {
                 return;
             }
+            if (!reportValidationErrors(new StudentValidator().validate(updated))) {
+                return;
+            }
             Student duplicate = studentDao.findByDocumentNumber(updated.getDocumentNumber());
             if (duplicate != null && duplicate.getId() != current.getId()) {
                 ConsoleUtils.printError("Document " + PrivacyUtils.maskIdentifier(updated.getDocumentNumber())
@@ -147,6 +155,10 @@ public class StudentController {
      * blocked by the database when historical records still reference it.
      */
     public void deleteStudent() {
+        if (!userRole.canDeleteMasterData()) {
+            ConsoleUtils.printError("Only an administrator can delete students.");
+            return;
+        }
         ConsoleUtils.printHeader("DELETE STUDENT");
         try {
             Student student = findStudentByIdOrCancel();
@@ -205,17 +217,17 @@ public class StudentController {
      */
     private Student readStudentForm(Student current) throws SQLException {
         DocumentType documentType = readDocumentType(current == null ? DocumentType.TI : current.getDocumentType());
-        String documentNumber = ConsoleUtils.readRequiredText("Document number: ");
-        String firstName = ConsoleUtils.readRequiredText("First name"
-                + fallbackHint(current == null ? null : current.getFirstName()) + ": ");
-        String secondName = ConsoleUtils.readOptionalText("Second name"
+        String documentNumber = readDocumentNumberByType(documentType.toString());
+        String firstName = FormatValidators.normalizeName(ConsoleUtils.readRequiredText("First name"
+                + fallbackHint(current == null ? null : current.getFirstName()) + ": "));
+        String secondName = FormatValidators.normalizeName(ConsoleUtils.readOptionalText("Second name"
                 + fallbackHint(current == null ? null : current.getSecondName())
-                + " (empty = none): ", current == null ? null : current.getSecondName());
-        String lastName = ConsoleUtils.readRequiredText("First last name"
-                + fallbackHint(current == null ? null : current.getLastName()) + ": ");
-        String secondLastName = ConsoleUtils.readOptionalText("Second last name"
+                + " (empty = none): ", current == null ? null : current.getSecondName()));
+        String lastName = FormatValidators.normalizeName(ConsoleUtils.readRequiredText("First last name"
+                + fallbackHint(current == null ? null : current.getLastName()) + ": "));
+        String secondLastName = FormatValidators.normalizeName(ConsoleUtils.readOptionalText("Second last name"
                 + fallbackHint(current == null ? null : current.getSecondLastName())
-                + " (empty = none): ", current == null ? null : current.getSecondLastName());
+                + " (empty = none): ", current == null ? null : current.getSecondLastName()));
 
         LocalDate defaultBirthDate = current == null ? null : current.getBirthDate();
         LocalDate birthDate;
@@ -236,6 +248,11 @@ public class StudentController {
         String phone = ConsoleUtils.readOptionalText("Phone"
                 + fallbackHint(current == null ? null : current.getPhone())
                 + " (empty = none): ", current == null ? null : current.getPhone());
+        if (!FormatValidators.isValidOptionalPhone(phone)) {
+            ConsoleUtils.printError("The phone must be a Colombian mobile (3xx xxx xxxx) "
+                    + "or landline (60x xxx xxxx). Operation cancelled.");
+            return null;
+        }
         String email = ConsoleUtils.readOptionalEmail("Email"
                 + fallbackHint(current == null ? null : current.getEmail())
                 + " (empty = none): ", current == null ? null : current.getEmail());
@@ -308,6 +325,25 @@ public class StudentController {
 
     private String fallbackHint(String current) {
         return current == null || current.isBlank() ? "" : " (current value stored)";
+    }
+
+    /** Reads a document number validated by its type, with retry. */
+    private String readDocumentNumberByType(String documentType) {
+        return ConsoleUtils.readValidatedText("Document number: ",
+                number -> FormatValidators.isValidDocumentNumber(documentType, number),
+                "Invalid " + documentType + " number: "
+                        + FormatValidators.documentRuleDescription(documentType) + ".");
+    }
+
+    /** Prints every validation error at once; false when there are errors. */
+    private boolean reportValidationErrors(List<String> errors) {
+        if (errors.isEmpty()) {
+            return true;
+        }
+        ConsoleUtils.printError("The student data has " + errors.size()
+                + " problem(s); nothing was saved:");
+        errors.forEach(error -> System.out.println("    - " + error));
+        return false;
     }
 
     private DocumentType readDocumentType(DocumentType current) {
