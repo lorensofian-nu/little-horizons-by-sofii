@@ -2,6 +2,7 @@ package com.littlehorizons.erp.view;
 
 import com.littlehorizons.erp.controller.TeacherAssignmentController;
 import com.littlehorizons.erp.controller.TeacherController;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 
 /**
@@ -12,9 +13,14 @@ import com.littlehorizons.erp.util.ConsoleUtils;
  */
 public class TeacherView {
 
-    private final TeacherController teacherController = new TeacherController();
-    private final TeacherAssignmentController assignmentController =
-            new TeacherAssignmentController();
+    private final TeacherController teacherController;
+    private final TeacherAssignmentController assignmentController;
+
+    /** Builds the view with the session role for authorization. */
+    public TeacherView(UserRole userRole) {
+        this.teacherController = new TeacherController(userRole);
+        this.assignmentController = new TeacherAssignmentController(userRole);
+    }
 
     /** Shows the main teachers module menu; option 0 returns to the previous menu. */
     public void show() {

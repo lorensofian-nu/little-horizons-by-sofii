@@ -4,6 +4,7 @@ import com.littlehorizons.erp.dao.ClubDao;
 import com.littlehorizons.erp.dao.impl.ClubDaoImpl;
 import com.littlehorizons.erp.model.Club;
 import com.littlehorizons.erp.model.TeacherSummary;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
 
@@ -16,6 +17,12 @@ import java.util.List;
 public class ClubController {
 
     private final ClubDao clubDao = new ClubDaoImpl();
+    private final UserRole userRole;
+
+    /** Creates the controller with the session role for authorization. */
+    public ClubController(UserRole userRole) {
+        this.userRole = userRole;
+    }
 
     public void showMenu() {
         while (true) {
@@ -158,6 +165,10 @@ public class ClubController {
     }
 
     private void deleteClub() throws SQLException {
+        if (!userRole.canDeleteMasterData()) {
+            ConsoleUtils.printError("Only an administrator can delete clubs.");
+            return;
+        }
         ConsoleUtils.printHeader("DELETE CLUB");
         int clubId = ConsoleUtils.readInt("Club ID", 1, Integer.MAX_VALUE, 0);
         if (clubId == 0) {

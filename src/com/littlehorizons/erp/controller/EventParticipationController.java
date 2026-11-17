@@ -9,6 +9,7 @@ import com.littlehorizons.erp.model.Event;
 import com.littlehorizons.erp.model.EventParticipation;
 import com.littlehorizons.erp.model.ParticipationRole;
 import com.littlehorizons.erp.model.StudentSummary;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
 
@@ -27,6 +28,12 @@ public class EventParticipationController {
 
     private final EventParticipationDao participationDao = new EventParticipationDaoImpl();
     private final EventDao eventDao = new EventDaoImpl();
+    private final UserRole userRole;
+
+    /** Creates the controller with the session role for authorization. */
+    public EventParticipationController(UserRole userRole) {
+        this.userRole = userRole;
+    }
 
     public void showMenu() {
         while (true) {
@@ -170,6 +177,10 @@ public class EventParticipationController {
     }
 
     private void removeParticipant() throws SQLException {
+        if (!userRole.canDeleteMasterData()) {
+            ConsoleUtils.printError("Only an administrator can remove participants.");
+            return;
+        }
         ConsoleUtils.printHeader("REMOVE PARTICIPANT");
         Event event = pickAnyEvent();
         if (event == null) {

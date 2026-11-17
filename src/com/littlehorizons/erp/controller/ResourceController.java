@@ -7,6 +7,7 @@ import com.littlehorizons.erp.dao.impl.ResourceDaoImpl;
 import com.littlehorizons.erp.model.Resource;
 import com.littlehorizons.erp.model.ResourceCategory;
 import com.littlehorizons.erp.model.ResourceState;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
 
@@ -24,6 +25,12 @@ public class ResourceController {
 
     private final ResourceCategoryDao categoryDao = new ResourceCategoryDaoImpl();
     private final ResourceDao resourceDao = new ResourceDaoImpl();
+    private final UserRole userRole;
+
+    /** Creates the controller with the session role for authorization. */
+    public ResourceController(UserRole userRole) {
+        this.userRole = userRole;
+    }
 
     // ------------------------------------------------------------------
     // Categories
@@ -244,6 +251,10 @@ public class ResourceController {
      * be written off ('Dado de Baja') instead of deleted.
      */
     public void deleteResource() {
+        if (!userRole.canDeleteMasterData()) {
+            ConsoleUtils.printError("Only an administrator can delete resources.");
+            return;
+        }
         try {
             ConsoleUtils.printHeader("DELETE RESOURCE");
             Resource resource = pickResource();

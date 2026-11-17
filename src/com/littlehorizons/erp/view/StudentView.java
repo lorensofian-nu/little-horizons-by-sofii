@@ -8,6 +8,7 @@ import com.littlehorizons.erp.dao.impl.GradeDaoImpl;
 import com.littlehorizons.erp.dao.impl.GuardianDaoImpl;
 import com.littlehorizons.erp.dao.impl.StudentDaoImpl;
 import com.littlehorizons.erp.dao.impl.StudentGuardianDaoImpl;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 
 /**
@@ -21,13 +22,13 @@ public class StudentView {
     private final GuardianController guardianController;
     private final EnrollmentController enrollmentController;
 
-    public StudentView() {
+    public StudentView(UserRole userRole) {
         StudentDaoImpl studentDao = new StudentDaoImpl();
         StudentGuardianDaoImpl studentGuardianDao = new StudentGuardianDaoImpl();
         GuardianDaoImpl guardianDao = new GuardianDaoImpl();
-        this.studentController = new StudentController(studentDao, guardianDao);
+        this.studentController = new StudentController(studentDao, guardianDao, userRole);
         this.guardianController = new GuardianController(guardianDao,
-                studentGuardianDao, studentDao);
+                studentGuardianDao, studentDao, userRole);
         this.enrollmentController = new EnrollmentController(new EnrollmentDaoImpl(),
                 studentDao, new GradeDaoImpl(), studentGuardianDao);
     }

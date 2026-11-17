@@ -4,6 +4,7 @@ import com.littlehorizons.erp.controller.AcademicRecordController;
 import com.littlehorizons.erp.controller.AttendanceController;
 import com.littlehorizons.erp.controller.SubjectController;
 import com.littlehorizons.erp.controller.SubjectEnrollmentController;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 
 /**
@@ -18,11 +19,11 @@ public class AcademicView {
     private final AttendanceController attendanceController;
 
     /** Builds the view with its controllers using no-arg constructor chains. */
-    public AcademicView() {
-        this.subjectController = new SubjectController();
+    public AcademicView(UserRole userRole) {
+        this.subjectController = new SubjectController(userRole);
         this.subjectEnrollmentController = new SubjectEnrollmentController();
-        this.academicRecordController = new AcademicRecordController();
-        this.attendanceController = new AttendanceController();
+        this.academicRecordController = new AcademicRecordController(userRole);
+        this.attendanceController = new AttendanceController(userRole);
     }
 
     /** Main academic menu loop. */

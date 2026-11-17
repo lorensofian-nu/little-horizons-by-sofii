@@ -3,6 +3,7 @@ package com.littlehorizons.erp.view;
 import com.littlehorizons.erp.controller.ResourceController;
 import com.littlehorizons.erp.controller.StudentLoanController;
 import com.littlehorizons.erp.controller.TeacherLoanController;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 
 /**
@@ -11,9 +12,14 @@ import com.littlehorizons.erp.util.ConsoleUtils;
  */
 public class ResourceView {
 
-    private final ResourceController resourceController = new ResourceController();
+    private final ResourceController resourceController;
     private final StudentLoanController studentLoanController = new StudentLoanController();
     private final TeacherLoanController teacherLoanController = new TeacherLoanController();
+
+    /** Builds the view with the session role for authorization. */
+    public ResourceView(UserRole userRole) {
+        this.resourceController = new ResourceController(userRole);
+    }
 
     /** Shows the main menu loop of the module until the user goes back. */
     public void show() {

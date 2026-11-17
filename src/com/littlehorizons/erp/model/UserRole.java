@@ -36,6 +36,11 @@ public enum UserRole {
         return option == 2 || option == 3 || option == 4 || option == 6 || option == 7;
     }
 
+    /** Whether the role may permanently delete master data (hard delete). */
+    public boolean canDeleteMasterData() {
+        return this == ADMINISTRATOR;
+    }
+
     /** Allows access to financial records and financial reports. */
     public boolean canViewFinancialData() {
         return this == ADMINISTRATOR || this == SECRETARY;

@@ -21,7 +21,7 @@ public class FinancialView {
     }
 
     public FinancialView(UserRole userRole) {
-        this.conceptController = new PaymentConceptController();
+        this.conceptController = new PaymentConceptController(userRole);
         this.paymentController = new PaymentController(userRole);
         this.invoiceController = new InvoiceController(userRole);
     }

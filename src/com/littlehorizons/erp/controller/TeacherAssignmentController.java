@@ -8,6 +8,7 @@ import com.littlehorizons.erp.model.SubjectSummary;
 import com.littlehorizons.erp.model.Teacher;
 import com.littlehorizons.erp.model.TeacherAssignment;
 import com.littlehorizons.erp.model.TeacherStatus;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.AppConstants;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
@@ -36,11 +37,13 @@ public class TeacherAssignmentController {
 
     private final TeacherAssignmentDao assignmentDao;
     private final TeacherDao teacherDao;
+    private final UserRole userRole;
 
     /** Builds the controller with its default DAO implementations. */
-    public TeacherAssignmentController() {
+    public TeacherAssignmentController(UserRole userRole) {
         this.assignmentDao = new TeacherAssignmentDaoImpl();
         this.teacherDao = new TeacherDaoImpl();
+        this.userRole = userRole;
     }
 
     /** Creates a new assignment guided by the console. */
@@ -186,8 +189,13 @@ public class TeacherAssignmentController {
         }
     }
 
-    /** Deletes one assignment after confirmation. */
+    /** Deletes one assignment after confirmation. Administrator only. */
     public void deleteAssignment() {
+        if (!userRole.canDeleteMasterData()) {
+            ConsoleUtils.printError(
+                    "Only an administrator can delete subject assignments.");
+            return;
+        }
         try {
             ConsoleUtils.printHeader("DELETE ASSIGNMENT");
             int id = ConsoleUtils.readInt("  Assignment id to delete (0 = cancel): ",

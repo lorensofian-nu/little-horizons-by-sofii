@@ -11,6 +11,7 @@ import com.littlehorizons.erp.model.AttendanceStatus;
 import com.littlehorizons.erp.model.AcademicStudentSummary;
 import com.littlehorizons.erp.model.Subject;
 import com.littlehorizons.erp.model.AcademicTeacherSummary;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.AppConstants;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
@@ -40,12 +41,14 @@ public class AttendanceController {
     private final AttendanceDao attendanceDao;
     private final SubjectDao subjectDao;
     private final SubjectEnrollmentDao enrollmentDao;
+    private final UserRole userRole;
 
     /** Creates the controller with its default DAOs. */
-    public AttendanceController() {
+    public AttendanceController(UserRole userRole) {
         this.attendanceDao = new AttendanceDaoImpl();
         this.subjectDao = new SubjectDaoImpl();
         this.enrollmentDao = new SubjectEnrollmentDaoImpl();
+        this.userRole = userRole;
     }
 
     /** Shows the attendance submenu. Option 0 goes back. */
@@ -167,6 +170,10 @@ public class AttendanceController {
     }
 
     private void deleteAttendance() {
+        if (!userRole.canDeleteMasterData()) {
+            ConsoleUtils.printError("Only an administrator can delete attendance records.");
+            return;
+        }
         ConsoleUtils.printHeader("DELETE ATTENDANCE");
         try {
             Subject subject = readSubject();

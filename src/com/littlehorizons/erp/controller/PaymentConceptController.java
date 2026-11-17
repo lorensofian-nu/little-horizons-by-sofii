@@ -3,12 +3,12 @@ package com.littlehorizons.erp.controller;
 import com.littlehorizons.erp.dao.PaymentConceptDao;
 import com.littlehorizons.erp.dao.impl.PaymentConceptDaoImpl;
 import com.littlehorizons.erp.model.PaymentConcept;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.InvoiceGenerator;
 import com.littlehorizons.erp.util.LoggerUtil;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -17,9 +17,11 @@ import java.util.List;
 public class PaymentConceptController {
 
     private final PaymentConceptDao conceptDao;
+    private final UserRole userRole;
 
-    public PaymentConceptController() {
+    public PaymentConceptController(UserRole userRole) {
         this.conceptDao = new PaymentConceptDaoImpl();
+        this.userRole = userRole;
     }
 
     /** Creates a new concept from console input. */
@@ -33,11 +35,11 @@ public class PaymentConceptController {
             }
             String name = ConsoleUtils.readRequiredText("Concept name: ");
             String description = ConsoleUtils.readOptionalText("Description (empty = none): ", null);
-            double baseAmount = ConsoleUtils.readMoney("Base amount (COP): ");
+            BigDecimal baseAmount = ConsoleUtils.readBigDecimalAmount("Base amount (COP): ");
             boolean recurring = ConsoleUtils.confirm("Is it a recurring payment?");
 
             PaymentConcept concept = new PaymentConcept(0, code, name, description,
-                    BigDecimal.valueOf(baseAmount).setScale(2, RoundingMode.HALF_UP),
+                    baseAmount,
                     recurring, true, null, null);
             conceptDao.save(concept);
             ConsoleUtils.printSuccess("Concept created with id " + concept.getId() + ".");
@@ -89,8 +91,8 @@ public class PaymentConceptController {
             String description = ConsoleUtils.readOptionalText(
                     "Description [" + (concept.getDescription() == null ? "-" : concept.getDescription()) + "]: ",
                     concept.getDescription());
-            double baseAmount = ConsoleUtils.readDouble(
-                    "Base amount [" + concept.getBaseAmount() + "]: ", 0.0, Double.MAX_VALUE);
+            BigDecimal baseAmount = ConsoleUtils.readOptionalBigDecimalAmount(
+                    "Base amount [" + concept.getBaseAmount() + "]: ", concept.getBaseAmount());
             boolean recurring = ConsoleUtils.confirm(
                     "Recurring? (current: " + (concept.isRecurring() ? "Yes" : "No") + ")");
             boolean active = ConsoleUtils.confirm(
@@ -103,7 +105,7 @@ public class PaymentConceptController {
             concept.setConceptCode(code);
             concept.setConceptName(name);
             concept.setDescription(description);
-            concept.setBaseAmount(BigDecimal.valueOf(baseAmount).setScale(2, RoundingMode.HALF_UP));
+            concept.setBaseAmount(baseAmount);
             concept.setRecurring(recurring);
             concept.setActive(active);
             concept.setUpdateDate(LocalDateTime.now());
@@ -119,8 +121,12 @@ public class PaymentConceptController {
         }
     }
 
-    /** Deletes a concept (falls back to advice when it has linked payments). */
+    /** Deletes a concept (falls back to advice when it has linked payments). Administrator only. */
     public void deleteConcept() {
+        if (!userRole.canDeleteMasterData()) {
+            ConsoleUtils.printError("Only an administrator can delete payment concepts.");
+            return;
+        }
         ConsoleUtils.printHeader("DELETE PAYMENT CONCEPT");
         try {
             PaymentConcept concept = selectConcept();

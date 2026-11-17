@@ -4,6 +4,7 @@ import com.littlehorizons.erp.controller.ClubController;
 import com.littlehorizons.erp.controller.ClubMembershipController;
 import com.littlehorizons.erp.controller.EventController;
 import com.littlehorizons.erp.controller.EventParticipationController;
+import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
 
 /**
@@ -12,11 +13,18 @@ import com.littlehorizons.erp.util.ConsoleUtils;
  */
 public class ExtracurricularView {
 
-    private final ClubController clubController = new ClubController();
-    private final ClubMembershipController clubMembershipController = new ClubMembershipController();
-    private final EventController eventController = new EventController();
-    private final EventParticipationController eventParticipationController =
-            new EventParticipationController();
+    private final ClubController clubController;
+    private final ClubMembershipController clubMembershipController =
+            new ClubMembershipController();
+    private final EventController eventController;
+    private final EventParticipationController eventParticipationController;
+
+    /** Builds the view with the session role for authorization. */
+    public ExtracurricularView(UserRole userRole) {
+        this.clubController = new ClubController(userRole);
+        this.eventController = new EventController(userRole);
+        this.eventParticipationController = new EventParticipationController(userRole);
+    }
 
     public void show() {
         while (true) {
