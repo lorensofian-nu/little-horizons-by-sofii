@@ -13,6 +13,8 @@ public final class PasswordHasher {
     private static final int ITERATIONS = 120_000;
     private static final int SALT_BYTES = 16;
     private static final int KEY_BITS = 256;
+    private static final int MIN_VERIFY_ITERATIONS = 100_000;
+    private static final int MAX_VERIFY_ITERATIONS = 2_000_000;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private PasswordHasher() {
@@ -34,8 +36,14 @@ public final class PasswordHasher {
                 return false;
             }
             int iterations = Integer.parseInt(parts[1]);
+            if (iterations < MIN_VERIFY_ITERATIONS || iterations > MAX_VERIFY_ITERATIONS) {
+                return false;
+            }
             byte[] salt = Base64.getDecoder().decode(parts[2]);
             byte[] expected = Base64.getDecoder().decode(parts[3]);
+            if (salt.length < 16 || salt.length > 64 || expected.length != KEY_BITS / 8) {
+                return false;
+            }
             byte[] actual = derive(password, salt, iterations);
             return java.security.MessageDigest.isEqual(actual, expected);
         } catch (RuntimeException exception) {
