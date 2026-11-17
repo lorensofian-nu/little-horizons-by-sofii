@@ -1,5 +1,11 @@
 package com.littlehorizons.erp.util;
 
+import com.littlehorizons.erp.validation.FormatValidators;
+import com.littlehorizons.erp.validation.ValidationRules;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -28,13 +34,74 @@ public final class ConsoleUtils {
         return SCANNER.nextLine().trim();
     }
 
-    /** Reads a password without echo when the process has an attached console. */
+    /**
+     * Reads a text value accepted by the given rule, retrying until valid.
+     * The rule must be a pure validation predicate (see
+     * {@code com.littlehorizons.erp.validation.FormatValidators}).
+     */
+    public static String readValidatedText(String prompt,
+                                           java.util.function.Predicate<String> rule,
+                                           String errorMessage) {
+        while (true) {
+            String value = readLine(prompt);
+            if (rule.test(value)) {
+                return value;
+            }
+            System.out.println("  [!] " + errorMessage);
+        }
+    }
+
+    /**
+     * Reads a password without echo when the process has an attached console.
+     * Without a console (e.g. piped stdin) it tries the POSIX {@code stty
+     * -echo} trick before falling back to a visible read, so the password is
+     * only shown when hiding it is technically impossible.
+     */
     public static char[] readSecret(String prompt) {
         if (System.console() != null) {
             char[] value = System.console().readPassword(prompt);
             return value == null ? new char[0] : value;
         }
+        if (tryEnableSttyEchoOff()) {
+            try {
+                System.out.print(prompt);
+                return SCANNER.nextLine().trim().toCharArray();
+            } catch (java.util.NoSuchElementException exception) {
+                return new char[0];
+            } finally {
+                tryEnableSttyEchoOn();
+            }
+        }
+        System.out.println("  [!] WARNING: no hidden input available; the password "
+                + "will be visible on screen.");
         return readLine(prompt).toCharArray();
+    }
+
+    /**
+     * Disables terminal echo through {@code stty} when stdin is a terminal.
+     * Returns {@code false} when the trick is unavailable (not a terminal).
+     */
+    private static boolean tryEnableSttyEchoOff() {
+        return runStty("stty -echo");
+    }
+
+    /** Re-enables terminal echo after a {@code stty -echo} read. */
+    private static void tryEnableSttyEchoOn() {
+        runStty("stty echo");
+    }
+
+    private static boolean runStty(String command) {
+        try {
+            Process process = new ProcessBuilder("/bin/sh", "-c", command)
+                    .inheritIO()
+                    .start();
+            return process.waitFor() == 0;
+        } catch (IOException | InterruptedException | RuntimeException exception) {
+            if (exception instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return false;
+        }
     }
 
     /** Reads a non-empty text value, retrying until valid. */
@@ -61,15 +128,28 @@ public final class ConsoleUtils {
         return value.isEmpty() ? fallback : value;
     }
 
+    public static String readRequiredText(String prompt, int minLength, int maxLength,
+                                          String regex, String error) {
+        while (true) {
+            String value = readLine(prompt);
+            if (value.length() >= minLength && value.length() <= maxLength
+                    && value.matches(regex)) {
+                return value;
+            }
+            System.out.println("  [!] " + error);
+        }
+    }
+
     /** Reads an optional email with a basic syntax and length check. */
     public static String readOptionalEmail(String prompt, String fallback) {
         while (true) {
             String value = readLine(prompt);
             if (value.isEmpty()) {
-                return fallback;
+                return FormatValidators.normalizeEmail(fallback);
             }
-            if (value.length() <= 100 && value.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
-                return value;
+            String normalized = FormatValidators.normalizeEmail(value);
+            if (FormatValidators.isValidEmail(normalized)) {
+                return normalized;
             }
             System.out.println("  [!] Enter a valid email address or leave it empty.");
         }
@@ -118,6 +198,45 @@ public final class ConsoleUtils {
     /** Reads a monetary amount (>= 0) in Colombian pesos. */
     public static double readMoney(String prompt) {
         return readDouble(prompt, 0.0, Double.MAX_VALUE);
+    }
+
+    /**
+     * Reads a monetary amount as an exact {@link BigDecimal} with two
+     * decimals, avoiding the precision loss of intermediate {@code double}
+     * values. Range: 0 .. 99,999,999.99.
+     */
+    public static BigDecimal readBigDecimalAmount(String prompt) {
+        return parseBigDecimalAmount(prompt, null);
+    }
+
+    /**
+     * Reads an optional monetary amount as an exact {@link BigDecimal};
+     * empty input returns the supplied fallback value unchanged.
+     */
+    public static BigDecimal readOptionalBigDecimalAmount(String prompt, BigDecimal fallback) {
+        return parseBigDecimalAmount(prompt, fallback);
+    }
+
+    /** Shared parser for the exact-amount readers; never returns null. */
+    private static BigDecimal parseBigDecimalAmount(String prompt, BigDecimal fallback) {
+        while (true) {
+            String raw = readLine(prompt);
+            if (raw.isEmpty() && fallback != null) {
+                return fallback;
+            }
+            // Strict pattern: digits with an optional single two-decimal
+            // separator, no scientific notation and no signs.
+            if (FormatValidators.isAmountText(raw)) {
+                BigDecimal value = new BigDecimal(raw.replace(',', '.'))
+                        .setScale(2, RoundingMode.HALF_UP);
+                if (value.compareTo(BigDecimal.ZERO) >= 0
+                        && value.compareTo(ValidationRules.MAX_MONEY) <= 0) {
+                    return value;
+                }
+            }
+            System.out.println("  [!] Enter a valid amount between 0 and 99,999,999.99 "
+                    + "(plain digits, optional 2 decimals).");
+        }
     }
 
     /** Reads a monetary value; empty input returns the supplied fallback. */

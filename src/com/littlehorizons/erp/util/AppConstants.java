@@ -1,7 +1,11 @@
 package com.littlehorizons.erp.util;
 
+import com.littlehorizons.erp.validation.ValidationRules;
+
 /**
  * Global constants for the Little Horizons ERP application.
+ * Numeric and format limits live in {@link ValidationRules}; this class only
+ * holds branding, folders and deployment constants.
  */
 public final class AppConstants {
 
@@ -20,11 +24,9 @@ public final class AppConstants {
     public static final String INVOICE_FOLDER = "invoices";
     public static final String ERROR_LOG_FILE = "error_log.txt";
 
-    /** Academic limits. */
-    public static final double MIN_GRADE = 0.0;
-    public static final double MAX_GRADE = 5.0;
-    public static final int MIN_YEAR = 2000;
-    public static final int MAX_YEAR = 2100;
+    /** Academic limits. Single source of truth: ValidationRules. */
+    public static final int MIN_YEAR = ValidationRules.MIN_YEAR;
+    public static final int MAX_YEAR = ValidationRules.MAX_YEAR;
 
     /** Default number of records used to seed the DML script. */
     public static final int MIN_SEED_RECORDS = 30;
