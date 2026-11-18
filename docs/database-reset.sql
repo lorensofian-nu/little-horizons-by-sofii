@@ -1,4 +1,11 @@
--- DESTRUCTIVE DEVELOPMENT RESET.
--- Run only when the complete academic database may be deleted.
+-- DESTRUCTIVE DEVELOPMENT RESET — DO NOT RUN DIRECTLY WITH `mysql <`.
+--
+-- Dropping a database from a script cannot ask for confirmation, so the
+-- supported way to reset the full academic database is the guarded shell
+-- script that wraps this file:
+--
+--     scripts/reset-database.sh
+--
+-- That script asks for an explicit confirmation word, resolves absolute
+-- paths and only then executes these statements.
 DROP DATABASE IF EXISTS erp_little_horizons;
-SOURCE docs/database.sql;

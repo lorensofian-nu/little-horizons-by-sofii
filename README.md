@@ -89,11 +89,15 @@ SOURCE /ruta/al/proyecto/docs/database.sql;
 ```
 
 Para reiniciar completamente una instalación académica, usar únicamente el
-script explícitamente destructivo `docs/database-reset.sql`. Nunca ejecutarlo
-contra datos reales.
+script protegido `scripts/reset-database.sh`, que pide confirmación explícita
+(`DESTROY`) antes de ejecutar el reset destructivo de `docs/database-reset.sql`.
+Nunca ejecutarlo contra datos reales. Crear respaldos previos con
+`scripts/backup-database.sh`.
 
 Para actualizar una base existente sin borrarla, ejecutar las migraciones
-versionadas de `docs/migrations/` en orden y revisar `schema_migrations`.
+versionadas de `docs/migrations/` en orden y revisar `schema_migrations`. Al
+arrancar, la aplicación verifica automáticamente que las migraciones requeridas
+estén aplicadas y se detiene con instrucciones si el esquema está desactualizado.
 
 ### 6.2. Configuración de credenciales
 
@@ -350,9 +354,15 @@ _(Opcional — agregar capturas del menú principal, registro de notas, factura 
 - Por instrucción del usuario, el reporte/factura se genera en **formato `.txt`**, no en PDF.
 - Las asignaciones persisten día y hora de clase y rechazan solapamientos del mismo profesor.
 - La autenticación usa usuarios, contraseñas PBKDF2 y roles de consola (`Administrador`, `Profesor`, `Secretaria`); los datos de contacto y documentos del cliente se redactan para roles no administradores.
+- El bloqueo temporal de cuentas (5 intentos fallidos → 15 minutos) y la
+  verificación del esquema (`schema_migrations`) están activos por defecto.
+- El borrado permanente de registros (estudiantes, acudientes, profesores,
+  materias, notas, asistencia, clubes, eventos, recursos y asignaciones) está
+  restringido al rol Administrador a nivel de controlador.
 - La aplicación requiere consola con soporte UTF-8 para mostrar correctamente los caracteres de caja (`╔ ═ ╚`) y las tildes.
 - `docs/database.sql` no elimina la base de datos. El reset destructivo está
-  separado en `docs/database-reset.sql` y no debe ejecutarse sobre datos reales.
+  separado en `docs/database-reset.sql` (envuelto por `scripts/reset-database.sh`)
+  y no debe ejecutarse sobre datos reales.
 
 ---
 

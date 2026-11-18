@@ -20,6 +20,8 @@ db.properties
 *.jks
 secrets/
 credentials/
+backups/
+untitled/
 
 # IDE files
 .idea/
