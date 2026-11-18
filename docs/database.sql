@@ -11,7 +11,8 @@
 --                 (or, inside a MySQL session:  SOURCE docs/database.sql;)
 --                 This script is non-destructive at database level. It is
 --                 intended for a new/empty academic database. Use
---                 docs/database-reset.sql only when a full reset is intended.
+--                 docs/database-reset.sql only when a full reset is intended
+--                 (use the guarded scripts/reset-database.sh wrapper).
 -- ============================================================================
 
 
@@ -32,7 +33,9 @@ VALUES
     ('V001', 'Baseline Little Horizons schema'),
     ('V002', 'Security tables, document sequences and TXT invoice column'),
     ('V003', 'Primary guardian and student relationship integrity'),
-    ('V004', 'Guardian document type expansion');
+    ('V004', 'Guardian document type expansion'),
+    ('V005', 'Account lockout, unique e-mails and nullable teacher references'),
+    ('V006', 'Password rotation timestamp and data-range CHECK constraints');
 
 CREATE TABLE secuencias_documento (
     nombre_secuencia VARCHAR(80) PRIMARY KEY,
@@ -70,7 +73,9 @@ CREATE TABLE estudiantes (
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_documento (tipo_documento, numero_documento),
     INDEX idx_estado (estado),
-    INDEX idx_nombre (primer_apellido, segundo_apellido, primer_nombre)
+    INDEX idx_nombre (primer_apellido, segundo_apellido, primer_nombre),
+    CONSTRAINT chk_estudiantes_nacimiento CHECK (fecha_nacimiento >= '1900-01-01'),
+    UNIQUE KEY uq_estudiante_correo (correo_electronico)
 ) ENGINE=InnoDB COMMENT='Información completa de estudiantes';
 
 CREATE TABLE acudientes (
@@ -91,7 +96,8 @@ CREATE TABLE acudientes (
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_documento (tipo_documento, numero_documento),
-    INDEX idx_nombre (primer_apellido, segundo_apellido)
+    INDEX idx_nombre (primer_apellido, segundo_apellido),
+    UNIQUE KEY uq_acudiente_correo (correo_electronico)
 ) ENGINE=InnoDB COMMENT='Acudientes y tutores legales';
 
 CREATE TABLE estudiante_acudiente (
@@ -123,6 +129,7 @@ CREATE TABLE matriculas (
     FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
     FOREIGN KEY (id_grado) REFERENCES grados(id_grado),
     UNIQUE KEY matricula_unica (id_estudiante, año_academico),
+    CONSTRAINT chk_matriculas_anio CHECK (año_academico BETWEEN 2000 AND 2100),
     INDEX idx_año_grado (año_academico, id_grado),
     INDEX idx_estado (estado_matricula)
 ) ENGINE=InnoDB COMMENT='Historial de matrículas de estudiantes por año y grado';
@@ -169,9 +176,13 @@ CREATE TABLE usuarios (
     rol ENUM('Administrador', 'Profesor', 'Secretaria') NOT NULL,
     activo BOOLEAN NOT NULL DEFAULT TRUE,
     debe_cambiar_password BOOLEAN NOT NULL DEFAULT TRUE,
+    intentos_fallidos INT NOT NULL DEFAULT 0,
+    bloqueado_hasta TIMESTAMP NULL,
+    password_changed_at TIMESTAMP NULL,
     ultimo_acceso TIMESTAMP NULL,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_usuario_activo (nombre_usuario, activo)
+    INDEX idx_usuario_activo (nombre_usuario, activo),
+    INDEX idx_usuario_bloqueo (nombre_usuario, bloqueado_hasta)
 ) ENGINE=InnoDB COMMENT='Usuarios autenticados y roles del sistema';
 
 CREATE TABLE asignaciones_profesor (
@@ -187,6 +198,7 @@ CREATE TABLE asignaciones_profesor (
     FOREIGN KEY (id_profesor) REFERENCES profesores(id_profesor) ON DELETE RESTRICT,
     FOREIGN KEY (id_materia) REFERENCES materias(id_materia) ON DELETE RESTRICT,
     UNIQUE KEY asignacion_unica (id_profesor, id_materia, año_academico, seccion),
+    CONSTRAINT chk_asignaciones_anio CHECK (año_academico BETWEEN 2000 AND 2100),
     CHECK (hora_inicio IS NULL OR hora_fin IS NULL OR hora_inicio < hora_fin),
     INDEX idx_profesor_año (id_profesor, año_academico),
     INDEX idx_materia_año (id_materia, año_academico)
@@ -205,6 +217,7 @@ CREATE TABLE inscripciones_materia (
     FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
     FOREIGN KEY (id_materia) REFERENCES materias(id_materia) ON DELETE RESTRICT,
     UNIQUE KEY inscripcion_unica (id_estudiante, id_materia, año_academico, periodo_academico),
+    CONSTRAINT chk_inscriptos_anio CHECK (año_academico BETWEEN 2000 AND 2100),
     INDEX idx_estudiante_año (id_estudiante, año_academico),
     INDEX idx_materia_periodo (id_materia, periodo_academico)
 ) ENGINE=InnoDB COMMENT='Inscripción de estudiantes en materias específicas';
@@ -242,7 +255,7 @@ CREATE TABLE asistencias (
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante) ON DELETE RESTRICT,
     FOREIGN KEY (id_materia) REFERENCES materias(id_materia) ON DELETE RESTRICT,
-    FOREIGN KEY (registrado_por) REFERENCES profesores(id_profesor),
+    FOREIGN KEY (registrado_por) REFERENCES profesores(id_profesor) ON DELETE SET NULL,
     UNIQUE KEY asistencia_unica (id_estudiante, id_materia, fecha_asistencia),
     INDEX idx_estudiante_fecha (id_estudiante, fecha_asistencia),
     INDEX idx_materia_fecha (id_materia, fecha_asistencia),
@@ -259,7 +272,7 @@ CREATE TABLE clubes (
     esta_activo BOOLEAN DEFAULT TRUE,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     fecha_actualizacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_profesor_supervisor) REFERENCES profesores(id_profesor),
+    FOREIGN KEY (id_profesor_supervisor) REFERENCES profesores(id_profesor) ON DELETE SET NULL,
     CHECK (capacidad_maxima > 0),
     INDEX idx_activo (esta_activo),
     INDEX idx_nombre (nombre_club)
@@ -291,7 +304,7 @@ CREATE TABLE eventos (
     id_organizador INT COMMENT 'Profesor organizador del evento',
     esta_activo BOOLEAN DEFAULT TRUE,
     fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_organizador) REFERENCES profesores(id_profesor),
+    FOREIGN KEY (id_organizador) REFERENCES profesores(id_profesor) ON DELETE SET NULL,
     INDEX idx_fecha (fecha_evento),
     INDEX idx_tipo (tipo_evento),
     INDEX idx_activo (esta_activo)
@@ -344,6 +357,7 @@ CREATE TABLE pagos (
     FOREIGN KEY (id_acudiente) REFERENCES acudientes(id_acudiente) ON DELETE RESTRICT,
     FOREIGN KEY (id_concepto) REFERENCES conceptos_pago(id_concepto),
     CHECK (monto_pagado >= 0),
+    CONSTRAINT chk_pagos_anio CHECK (año_academico IS NULL OR año_academico BETWEEN 2000 AND 2100),
     INDEX idx_estudiante_fecha (id_estudiante, fecha_pago),
     INDEX idx_concepto (id_concepto),
     INDEX idx_fecha (fecha_pago),
