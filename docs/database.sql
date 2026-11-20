@@ -497,7 +497,7 @@ INSERT INTO conceptos_pago (id_concepto, codigo_concepto, nombre_concepto, descr
 -- assignments below reference these ids.
 -- ----------------------------------------------------------------------------
 INSERT INTO profesores (id_profesor, tipo_documento, numero_documento, primer_nombre, segundo_nombre, primer_apellido, segundo_apellido, correo_electronico, telefono, especializacion, fecha_contratacion, estado) VALUES
-(1, 'CC', '9000000001', 'Teacher01', NULL, 'Test', 'Record', 'teacher01@example.invalid', '0000000001', 'General', '2010-01-02', 'Activo'),
+(1, 'CC', '9000000001', 'By', 'Sofi', 'Núñez', 'Carvajal', 'teacher01@example.invalid', '0000000001', 'General', '2010-01-02', 'Activo'),
 (2, 'CC', '9000000002', 'Teacher02', NULL, 'Test', 'Record', 'teacher02@example.invalid', '0000000002', 'General', '2010-01-03', 'Activo'),
 (3, 'CC', '9000000003', 'Teacher03', NULL, 'Test', 'Record', 'teacher03@example.invalid', '0000000003', 'General', '2010-01-04', 'Activo'),
 (4, 'CC', '9000000004', 'Teacher04', NULL, 'Test', 'Record', 'teacher04@example.invalid', '0000000004', 'General', '2010-01-05', 'Activo'),
