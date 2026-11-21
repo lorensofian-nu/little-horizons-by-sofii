@@ -1,5 +1,6 @@
 package test.vista;
 
+import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
 import test.controlador.ExportadorMateriasProfesorController;
 import test.modelo.MateriaAsignada;
@@ -19,23 +20,42 @@ public final class ExportadorMateriasProfesorMain {
     }
 
     public static void main(String[] args) {
-        ejecutarExportador();
+        try (Scanner scanner = new Scanner(System.in, java.nio.charset.StandardCharsets.UTF_8)) {
+            ejecutarExportador((prompt) -> {
+                System.out.print(prompt);
+                return scanner.hasNextLine() ? scanner.nextLine().trim() : null;
+            }, true);
+        } catch (RuntimeException exception) {
+            LoggerUtil.logError("Exportador de materias: error inesperado", exception);
+            System.out.println();
+            System.out.println("Error inesperado: no fue posible completar la operación.");
+        }
     }
 
-    private static void ejecutarExportador() {
+    /** Ejecuta el exportador desde el menú de profesores sin cerrar System.in. */
+    public static void ejecutarDesdeMenu() {
+        ejecutarExportador(ConsoleUtils::readLine, false);
+    }
+
+    @FunctionalInterface
+    private interface LectorEntrada {
+        String leer(String prompt);
+    }
+
+    private static void ejecutarExportador(LectorEntrada lector, boolean ejecucionDirecta) {
         ExportadorMateriasProfesorController controlador =
                 new ExportadorMateriasProfesorController();
 
-        try (Scanner scanner = new Scanner(System.in, java.nio.charset.StandardCharsets.UTF_8)) {
+        try {
             while (true) {
                 mostrarEncabezado();
-                System.out.print("Ingrese el ID del profesor para exportar sus materias asignadas: ");
 
-                if (!scanner.hasNextLine()) {
+                String entrada = lector.leer(
+                        "Ingrese el ID del profesor para exportar sus materias asignadas: ");
+                if (entrada == null) {
                     return;
                 }
 
-                String entrada = scanner.nextLine().trim();
                 int idProfesor;
                 try {
                     idProfesor = Integer.parseInt(entrada);
@@ -85,7 +105,7 @@ public final class ExportadorMateriasProfesorMain {
                             profesor.get().getNombreCompleto());
                     System.out.printf("para el año académico %d.%n",
                             ExportadorMateriasProfesorController.ANIO_ACADEMICO);
-                    esperarEnter(scanner);
+                    esperarFin(lector, ejecucionDirecta);
                     return;
                 }
 
@@ -104,11 +124,11 @@ public final class ExportadorMateriasProfesorMain {
                     System.out.println("El archivo está listo para ser utilizado.");
                     System.out.println();
                     System.out.println("===============================================================================");
-                    esperarEnter(scanner);
+                    esperarFin(lector, ejecucionDirecta);
                     return;
                 } catch (IOException | SecurityException exception) {
                     manejarErrorArchivo(exception);
-                    esperarEnter(scanner);
+                    esperarFin(lector, ejecucionDirecta);
                     return;
                 }
             }
@@ -151,12 +171,12 @@ public final class ExportadorMateriasProfesorMain {
         System.out.println();
     }
 
-    private static void esperarEnter(Scanner scanner) {
+    private static void esperarFin(LectorEntrada lector, boolean ejecucionDirecta) {
         System.out.println();
-        System.out.println("Presione Enter para salir...");
+        System.out.println(ejecucionDirecta
+                ? "Presione Enter para salir..."
+                : "Presione Enter para volver al menú de profesores...");
         System.out.println("===============================================================================");
-        if (scanner.hasNextLine()) {
-            scanner.nextLine();
-        }
+        lector.leer("");
     }
 }
