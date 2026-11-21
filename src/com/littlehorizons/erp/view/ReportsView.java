@@ -19,6 +19,7 @@ import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.AppConstants;
 import com.littlehorizons.erp.util.ConsoleUtils;
 import com.littlehorizons.erp.util.LoggerUtil;
+import test.vista.ExportadorMateriasProfesorMain;
 
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -58,9 +59,10 @@ public class ReportsView {
             System.out.println("  4. Financial report");
             System.out.println("  5. Extracurricular report");
             System.out.println("  6. Resources report");
+            System.out.println("  7. Exportar materias asignadas (2025)");
             System.out.println("  0. Back to main menu");
 
-            int option = ConsoleUtils.readMenuOption("Select an option: ", 6);
+            int option = ConsoleUtils.readMenuOption("Select an option: ", 7);
             if (option == 0) {
                 return;
             }
@@ -71,6 +73,7 @@ public class ReportsView {
                 case 4 -> showFinancialReport();
                 case 5 -> showExtracurricularReport();
                 case 6 -> showResourcesReport();
+                case 7 -> ExportadorMateriasProfesorMain.ejecutarDesdeMenu();
                 default -> ConsoleUtils.printError("Unknown option.");
             }
         }

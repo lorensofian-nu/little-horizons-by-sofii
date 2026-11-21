@@ -824,11 +824,15 @@ INSERT INTO materias (id_materia, codigo_materia, nombre_materia, descripcion, i
 (33, 'EDU-11', 'Educación Física',      'Proyectos deportivos y proyecto de vida',             12, 2, TRUE);
 
 -- ----------------------------------------------------------------------------
--- Teacher-subject assignments for 2026. Section A is the main section of each
--- subject; teachers 17-30 lead the extra section B of selected subjects, so
--- every one of the 30 teachers has at least one assignment.
+-- Teacher-subject assignments. The first three rows provide the 2025 fixture
+-- used by the teacher-subjects exporter for teacher 1. Section A is the main
+-- section of each subject; teachers 17-30 lead the extra section B of selected
+-- subjects in 2026, so every one of the 30 teachers has at least one assignment.
 -- ----------------------------------------------------------------------------
 INSERT INTO asignaciones_profesor (id_profesor, id_materia, año_academico, seccion) VALUES
+(1,  1,  2025, 'A'),
+(1,  5,  2025, 'A'),
+(1, 30,  2025, 'A'),
 (1,  1,  2026, 'A'),
 (1,  5,  2026, 'A'),
 (2,  9,  2026, 'A'),

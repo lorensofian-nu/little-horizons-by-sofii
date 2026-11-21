@@ -4,7 +4,6 @@ import com.littlehorizons.erp.controller.TeacherAssignmentController;
 import com.littlehorizons.erp.controller.TeacherController;
 import com.littlehorizons.erp.model.UserRole;
 import com.littlehorizons.erp.util.ConsoleUtils;
-import test.vista.ExportadorMateriasProfesorMain;
 
 /**
  * Console view of the teachers module. It opens the main teachers menu and
@@ -29,13 +28,11 @@ public class TeacherView {
             ConsoleUtils.printHeader("TEACHERS MODULE - LITTLE HORIZONS");
             System.out.println("  1. Teachers");
             System.out.println("  2. Subject assignments");
-            System.out.println("  3. Exportar materias asignadas (2025)");
             System.out.println("  0. Back to main menu");
-            int option = ConsoleUtils.readMenuOption("  Select an option: ", 3);
+            int option = ConsoleUtils.readMenuOption("  Select an option: ", 2);
             switch (option) {
                 case 1 -> teachersMenu();
                 case 2 -> assignmentsMenu();
-                case 3 -> ExportadorMateriasProfesorMain.ejecutarDesdeMenu();
                 default -> {
                     return;
                 }
