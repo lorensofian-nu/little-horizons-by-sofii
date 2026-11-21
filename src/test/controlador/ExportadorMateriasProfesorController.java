@@ -65,11 +65,17 @@ public final class ExportadorMateriasProfesorController {
 
     /** Obtiene únicamente las materias asignadas al profesor en 2025. */
     public List<MateriaAsignada> buscarMateriasAsignadas(int idProfesor) throws SQLException {
+        return buscarMateriasAsignadas(idProfesor, ANIO_ACADEMICO);
+    }
+
+    /** Obtiene las materias asignadas al profesor en el año indicado. */
+    public List<MateriaAsignada> buscarMateriasAsignadas(int idProfesor, int anioAcademico)
+            throws SQLException {
         List<MateriaAsignada> materias = new ArrayList<>();
         try (Connection conexion = DatabaseConnection.getInstance().getConnection();
              PreparedStatement sentencia = conexion.prepareStatement(CONSULTA_MATERIAS)) {
             sentencia.setInt(1, idProfesor);
-            sentencia.setInt(2, ANIO_ACADEMICO);
+            sentencia.setInt(2, anioAcademico);
             try (ResultSet resultado = sentencia.executeQuery()) {
                 while (resultado.next()) {
                     materias.add(new MateriaAsignada(
@@ -85,8 +91,14 @@ public final class ExportadorMateriasProfesorController {
     /** Genera el archivo en el directorio desde el que se ejecuta la aplicación. */
     public Path generarArchivo(Profesor profesor, List<MateriaAsignada> materias)
             throws IOException {
+        return generarArchivo(profesor, materias, ANIO_ACADEMICO);
+    }
+
+    /** Genera el archivo para el año académico indicado. */
+    public Path generarArchivo(Profesor profesor, List<MateriaAsignada> materias,
+                               int anioAcademico) throws IOException {
         String nombreArchivo = "materias_profesor_" + profesor.getId() + "_"
-                + ANIO_ACADEMICO + ".txt";
+                + anioAcademico + ".txt";
         Path archivo = Path.of(nombreArchivo).toAbsolutePath().normalize();
         try (BufferedWriter escritor = Files.newBufferedWriter(
                 archivo,
@@ -94,19 +106,25 @@ public final class ExportadorMateriasProfesorController {
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING,
                 StandardOpenOption.WRITE)) {
-            escritor.write(construirReporte(profesor, materias));
+            escritor.write(construirReporte(profesor, materias, anioAcademico));
         }
         return archivo;
     }
 
     /** Construye el contenido exacto del documento de texto. */
     public String construirReporte(Profesor profesor, List<MateriaAsignada> materias) {
+        return construirReporte(profesor, materias, ANIO_ACADEMICO);
+    }
+
+    /** Construye el contenido del documento para el año académico indicado. */
+    public String construirReporte(Profesor profesor, List<MateriaAsignada> materias,
+                                   int anioAcademico) {
         String salto = System.lineSeparator();
         StringBuilder reporte = new StringBuilder();
         reporte.append(SEPARADOR_PRINCIPAL).append(salto);
         reporte.append("           COLEGIO INTERNACIONAL \"LITTLE HORIZONS\"").append(salto);
         reporte.append("              REPORTE DE MATERIAS ASIGNADAS - AÑO ")
-                .append(ANIO_ACADEMICO).append(salto);
+                .append(anioAcademico).append(salto);
         reporte.append(SEPARADOR_PRINCIPAL).append(salto).append(salto);
 
         reporte.append("DATOS DEL PROFESOR").append(salto);

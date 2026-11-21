@@ -60,9 +60,10 @@ public class ReportsView {
             System.out.println("  5. Extracurricular report");
             System.out.println("  6. Resources report");
             System.out.println("  7. Exportar materias asignadas (2025)");
+            System.out.println("  8. Exportar materias asignadas por año");
             System.out.println("  0. Back to main menu");
 
-            int option = ConsoleUtils.readMenuOption("Select an option: ", 7);
+            int option = ConsoleUtils.readMenuOption("Select an option: ", 8);
             if (option == 0) {
                 return;
             }
@@ -74,6 +75,7 @@ public class ReportsView {
                 case 5 -> showExtracurricularReport();
                 case 6 -> showResourcesReport();
                 case 7 -> ExportadorMateriasProfesorMain.ejecutarDesdeMenu();
+                case 8 -> ExportadorMateriasProfesorMain.ejecutarDesdeMenuPorAnio();
                 default -> ConsoleUtils.printError("Unknown option.");
             }
         }
